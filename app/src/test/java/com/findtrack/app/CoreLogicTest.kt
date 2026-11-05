@@ -58,9 +58,9 @@ class CoreLogicTest {
 
     @Test
     fun `nearby coordinates resolve to the nearest landmark`() {
-        // ~500m from Riverside Park
-        val place = PlaceResolver.resolve(40.8070, -73.9630)
-        assertEquals("Riverside Park, NY", place)
+        // ~200m from Kariakoo Market
+        val place = PlaceResolver.resolve(-6.8200, 39.2800)
+        assertEquals("Kariakoo Market, Dar es Salaam", place)
     }
 
     @Test

@@ -28,6 +28,10 @@ val DividerColor = Color(0xFFEFF2F0)
 val UserBlue = Color(0xFF2F7DF6)
 val DangerRed = Color(0xFFC0392B)
 
+// Signal quality accents (used by map anchors and charts)
+val SignalMedium = Color(0xFFD9922E)
+val SignalWeak = Color(0xFFC05A3A)
+
 // Map palette (stylized offline vector map matching the design's cartography)
 val MapLand = Color(0xFFEFF3F0)
 val MapWater = Color(0xFFCBE2F1)

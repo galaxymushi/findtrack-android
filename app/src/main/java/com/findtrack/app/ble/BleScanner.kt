@@ -45,6 +45,7 @@ class BleScanner private constructor(context: Context) {
     companion object {
         private const val SCAN_ACTIVE_MS = 5_000L
         private const val SCAN_IDLE_MS = 2_000L
+        private const val STALE_TIMEOUT_MS = 60_000L
         private const val MAX_DEVICES = 30
         private const val DEMO_PREFIX = "demo:"
         private const val RSSI_SMOOTHING = 0.45f
@@ -168,10 +169,21 @@ class BleScanner private constructor(context: Context) {
         scanJob = scope.launch {
             _scanError.value = null
             while (isActive) {
+                pruneStaleDevices()
                 runOneScan()
                 delay(SCAN_IDLE_MS)
             }
         }
+    }
+
+    /** Drop devices that stopped advertising so lists and counts stay accurate. */
+    private fun pruneStaleDevices() {
+        val now = System.currentTimeMillis()
+        val current = _devices.value
+        val kept = current.filterValues {
+            it.isDemo || now - it.lastSeen <= STALE_TIMEOUT_MS
+        }
+        if (kept.size != current.size) _devices.value = kept
     }
 
     private fun stopScanLoop() {
@@ -295,7 +307,7 @@ class BleScanner private constructor(context: Context) {
         _devices.value = trim(updated)
     }
 
-    /** Keep the map bounded: strongest first, oldest dropped, demo devices preserved. */
+    /** Keep the map bounded: strongest first (demo devices win ties). */
     private fun trim(map: Map<String, TrackedDevice>): Map<String, TrackedDevice> {
         if (map.size <= MAX_DEVICES) return map
         return map.values

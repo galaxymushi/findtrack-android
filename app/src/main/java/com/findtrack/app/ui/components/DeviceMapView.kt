@@ -2,6 +2,7 @@ package com.findtrack.app.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -9,10 +10,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.findtrack.app.BuildConfig
 import com.findtrack.app.ui.components.MapPin
 import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
@@ -44,6 +48,7 @@ fun DeviceMapView(
     modifier: Modifier = Modifier,
     zoom: Float = 16f,
     showControls: Boolean = true,
+    showLegend: Boolean = true,
     userLocation: LatLng? = null,
     selectedAddress: String? = null,
     onPinTap: (String) -> Unit = {},
@@ -108,6 +113,12 @@ fun DeviceMapView(
                             state = markerState,
                             title = pin.calloutTitle ?: "Device",
                             snippet = pin.calloutSubtitle,
+                            // Green = Bluetooth device (the phone is the native
+                            // blue dot); the selected device turns amber.
+                            icon = BitmapDescriptorFactory.defaultMarker(
+                                if (pin.selected) BitmapDescriptorFactory.HUE_ORANGE
+                                else BitmapDescriptorFactory.HUE_GREEN
+                            ),
                             onClick = {
                                 onPinTap(pin.address)
                                 true
@@ -115,6 +126,14 @@ fun DeviceMapView(
                         )
                     }
                 }
+            }
+
+            if (showLegend) {
+                MapLegend(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(12.dp)
+                )
             }
 
             if (showControls) {
@@ -159,6 +178,7 @@ fun DeviceMapView(
         modifier = modifier,
         zoom = stylizedZoom,
         showControls = showControls,
+        showLegend = showLegend,
         onZoomIn = {
             stylizedZoom = (stylizedZoom + 0.25f).coerceAtMost(2.5f)
             onZoomIn?.invoke()

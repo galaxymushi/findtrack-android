@@ -118,6 +118,7 @@ fun FinderMapScreen(
                         iconType = device.iconType,
                         distanceM = device.distanceM ?: 10.0,
                         selected = true,
+                        rssi = device.rssi,
                         calloutTitle = device.name,
                         calloutSubtitle = "Last seen ${TimeFormat.relative(device.lastSeen)}",
                         lat = deviceFix?.lat,

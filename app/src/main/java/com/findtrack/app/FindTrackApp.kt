@@ -42,6 +42,7 @@ class FindTrackApp : Application() {
         super.onCreate()
         graphInstance = AppGraph(this)
         createTrackingChannel()
+        com.findtrack.app.update.UpdateInstaller.updateChannel(this)
     }
 
     private fun createTrackingChannel() {

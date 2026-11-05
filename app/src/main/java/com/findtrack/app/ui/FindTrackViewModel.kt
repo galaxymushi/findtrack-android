@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.mutableStateOf
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.findtrack.app.BuildConfig
 import com.findtrack.app.FindTrackApp
 import com.findtrack.app.ble.DeviceIconType
 import com.findtrack.app.ble.TrackedDevice
@@ -20,6 +21,11 @@ import com.findtrack.app.data.HistoryDao
 import com.findtrack.app.data.HistoryEntity
 import com.findtrack.app.data.SavedDeviceEntity
 import com.findtrack.app.service.TrackingService
+import com.findtrack.app.update.UpdateChecker
+import com.findtrack.app.update.UpdateInfo
+import com.findtrack.app.update.UpdateInstaller
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -70,6 +76,15 @@ data class DeviceListEntry(
             isNearby = false
         )
     }
+}
+
+/** In-app update flow, surfaced on Home and in Settings. */
+sealed interface UpdateState {
+    data object Idle : UpdateState
+    data object Checking : UpdateState
+    data class Available(val info: UpdateInfo) : UpdateState
+    data object UpToDate : UpdateState
+    data class Failed(val message: String) : UpdateState
 }
 
 /**
@@ -141,6 +156,25 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
     val soundEnabled: StateFlow<Boolean> = prefs.soundEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    /** Null until DataStore has loaded, so the welcome screen never flashes. */
+    val onboardingDone: StateFlow<Boolean?> = prefs.onboardingDone
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Rolling RSSI readings per device, newest last (used by sparklines). */
+    private val _signalHistory = MutableStateFlow<Map<String, List<Int>>>(emptyMap())
+    val signalHistory: StateFlow<Map<String, List<Int>>> = _signalHistory.asStateFlow()
+
+    // ------------------------------------------------------------- updates
+
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    /** Version whose APK is currently downloading (null once idle). */
+    private val _downloadingVersion = MutableStateFlow<String?>(null)
+    val downloadingVersion: StateFlow<String?> = _downloadingVersion.asStateFlow()
+
+    private var updateCheckJob: Job? = null
+
     /** User's live position for the real Google Map (null until fixed). */
     val userLatLng: StateFlow<com.google.android.gms.maps.model.LatLng?> =
         location.lastFix
@@ -179,6 +213,23 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
+        // Keep a short rolling RSSI history per device for the signal chart.
+        viewModelScope.launch {
+            scanner.devices.collect { list ->
+                val live = list.map { it.address }.toSet()
+                val updated = _signalHistory.value
+                    .filterKeys { it in live }
+                    .toMutableMap()
+                list.forEach { device ->
+                    val previous = updated[device.address].orEmpty()
+                    if (previous.lastOrNull() != device.rssi) {
+                        updated[device.address] = (previous + device.rssi).takeLast(40)
+                    }
+                }
+                _signalHistory.value = updated
+            }
+        }
+
         // Record history for saved devices while the app is open (10 min cooldown
         // is applied inside LocationRepository.recordSighting).
         viewModelScope.launch {
@@ -202,6 +253,12 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
                         clearDemoHistory()
                     }
                 }
+        }
+
+        // Quietly look for a newer GitHub release after the first screens settle.
+        viewModelScope.launch {
+            delay(2_500)
+            if (prefs.onboardingDone.first()) checkForUpdates(notify = true)
         }
     }
 
@@ -252,6 +309,64 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSoundEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setSoundEnabled(enabled) }
+    }
+
+    fun completeOnboarding() {
+        viewModelScope.launch { prefs.setOnboardingDone(true) }
+    }
+
+    fun showOnboardingAgain() {
+        viewModelScope.launch { prefs.setOnboardingDone(false) }
+    }
+
+    // ------------------------------------------------------------ updates
+
+    /**
+     * Best-effort check against GitHub Releases. [notify] posts a system
+     * notification, at most once per released version.
+     */
+    fun checkForUpdates(notify: Boolean = false) {
+        if (updateCheckJob?.isActive == true) return
+        updateCheckJob = viewModelScope.launch {
+            _updateState.value = UpdateState.Checking
+            when (val result = UpdateChecker.check(BuildConfig.VERSION_NAME)) {
+                is UpdateChecker.Result.Available -> {
+                    _updateState.value = UpdateState.Available(result.info)
+                    if (notify) notifyUpdateAvailable(result.info)
+                }
+
+                UpdateChecker.Result.UpToDate -> _updateState.value = UpdateState.UpToDate
+                is UpdateChecker.Result.Failed -> _updateState.value =
+                    UpdateState.Failed(result.message)
+            }
+        }
+    }
+
+    private suspend fun notifyUpdateAvailable(info: UpdateInfo) {
+        if (prefs.lastNotifiedVersion.first() == info.version) return
+        if (UpdateInstaller.notifyAvailable(getApplication(), info)) {
+            prefs.setLastNotifiedVersion(info.version)
+        }
+    }
+
+    /** Starts the APK download, falling back to the release page without an asset. */
+    fun downloadUpdate() {
+        val info = (_updateState.value as? UpdateState.Available)?.info ?: return
+        val app = getApplication<Application>()
+        val apkUrl = info.apkUrl
+        if (apkUrl == null) {
+            UpdateInstaller.openReleasePage(app, info.releaseUrl)
+            return
+        }
+        if (UpdateInstaller.download(app, apkUrl, info.version)) {
+            _downloadingVersion.value = info.version
+        } else {
+            _updateState.value = UpdateState.Failed("Could not start the download")
+        }
+    }
+
+    fun dismissUpdate() {
+        _updateState.value = UpdateState.Idle
     }
 
     // -------------------------------------------------------- permissions
@@ -314,11 +429,11 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
                 Triple("demo:00:00:00:00:05", "JBL Charge 5", -102)
             )
             val places = listOf(
-                "Riverside Park, NY" to Pair(40.8030, -73.9630),
-                "Central Park, NY" to Pair(40.7829, -73.9654),
-                "5th Ave, NY" to Pair(40.7740, -73.9650),
-                "Times Square, NY" to Pair(40.7580, -73.9855),
-                "Hudson River Park, NY" to Pair(40.7335, -74.0090)
+                "Mlimani City, Dar es Salaam" to Pair(-6.7730, 39.2210),
+                "Kariakoo Market, Dar es Salaam" to Pair(-6.8180, 39.2803),
+                "Coco Beach, Dar es Salaam" to Pair(-6.7590, 39.2810),
+                "Julius Nyerere Airport, Dar es Salaam" to Pair(-6.8780, 39.2026),
+                "Mwenge, Dar es Salaam" to Pair(-6.7695, 39.2435)
             )
             val times = listOf(
                 clockToday(9, 37, now),

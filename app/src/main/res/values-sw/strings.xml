@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FindTrack</string>
+    <string name="app_tagline">Tafuta vifaa vyako. Uwe karibu.</string>
+    <string name="notification_channel_name">Ufuatiliaji wa kifaa</string>
+    <string name="notification_channel_desc">Arifa ya kudumu inayoonekana wakati FindTrack inafuatilia kifaa.</string>
+    <string name="nav_home">Nyumbani</string>
+    <string name="nav_devices">Vifaa</string>
+    <string name="nav_map">Ramani</string>
+    <string name="nav_history">Historia</string>
+
+    <string name="notif_tracking_title">Inafuatilia %1$s</string>
+    <string name="notif_searching">Inatafuta %1$s…</string>
+    <string name="notif_lost">Ishara imepotea — mahali pa mwisho pamehifadhiwa</string>
+    <string name="notif_device_distance">%1$s • %2$s</string>
+    <string name="notif_stop_action">Simamisha</string>
+    <string name="notif_device_generic">kifaa</string>
+
+    <!-- Welcome screen -->
+    <string name="welcome_skip">Ruka</string>
+    <string name="welcome_next">Endelea</string>
+    <string name="welcome_start">Anza sasa</string>
+    <string name="welcome_title_1">Pata kilichohitajika, haraka</string>
+    <string name="welcome_body_1">FindTrack inasikiliza vifaa vya Bluetooth vilivyo karibu na kuonyesha umbali wake — haitaji internet.</string>
+    <string name="welcome_title_2">Simu yako na vifaa, tofauti wazi</string>
+    <string name="welcome_body_2">Nukta ya bluu ni wewe. Pini za kijani ni vifaa vyako vya Bluetooth. Gusa pini kuona maelezo.</string>
+    <string name="welcome_title_3">Faragha na bila mtandao</string>
+    <string name="welcome_body_3">Kila kitu kinabaki kwenye simu hii. Hakuna akaunti, hakuna cloud, hakuna ufuatiliaji — app inafanya kazi hata kwenye airplane mode.</string>
+
+    <!-- Map legend -->
+    <string name="map_you">Wewe</string>
+    <string name="map_legend_you">Wewe (simu hii)</string>
+    <string name="map_legend_device">Kifaa cha Bluetooth</string>
+
+    <!-- Settings -->
+    <string name="settings_show_welcome">Onyesha utangulizi tena</string>
+    <string name="settings_show_welcome_sub">Rudia utangulizi na vidokezo vya haraka</string>
+
+    <!-- App updates -->
+    <string name="update_channel_name">Sasisho za app</string>
+    <string name="update_channel_desc">Inakujulisha wakati toleo jipya la FindTrack linapatikana.</string>
+    <string name="update_notif_title">FindTrack %1$s inapatikana</string>
+    <string name="update_notif_text">Toleo jipya liko tayari — lipakue ndani ya app.</string>
+    <string name="update_download">Pakua</string>
+    <string name="update_download_title">Sasisho la FindTrack %1$s</string>
+    <string name="update_download_desc">Inapakua toleo jipya…</string>
+    <string name="update_install_title">FindTrack %1$s imepakuliwa</string>
+    <string name="update_install_text">Gusa kusakinisha toleo jipya.</string>
+    <string name="update_banner_title">Sasisho linapatikana</string>
+    <string name="update_banner_version">Toleo %1$s</string>
+    <string name="update_banner_body">Toleo jipya la FindTrack liko tayari. Lipakue sasa kupata marekebisho na vipengele vipya.</string>
+    <string name="update_banner_downloading">Inapakua…</string>
+    <string name="update_banner_download">Pakua</string>
+    <string name="update_banner_dismiss">Ondoa</string>
+    <string name="settings_check_updates">Angalia masasisho</string>
+    <string name="settings_update_idle">Gusa kuangalia GitHub kwa toleo jipya</string>
+    <string name="settings_update_checking">Inaangalia masasisho…</string>
+    <string name="settings_update_available">Toleo %1$s linapatikana — gusa kupakua</string>
+    <string name="settings_update_downloading">Inapakua toleo %1$s — angalia arifa zako</string>
+    <string name="settings_update_latest">Uko kwenye toleo la mwisho (v%1$s)</string>
+    <string name="settings_update_failed">Imeshindikana kuangalia masasisho — gusa kujaribu tena</string>
+</resources>

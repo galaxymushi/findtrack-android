@@ -23,11 +23,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.PhonelinkRing
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Sensors
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,11 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.findtrack.app.BuildConfig
+import com.findtrack.app.R
 import com.findtrack.app.ui.FindTrackViewModel
+import com.findtrack.app.ui.UpdateState
 import com.findtrack.app.ui.components.BackTopBar
 import com.findtrack.app.ui.components.SectionCard
 import com.findtrack.app.ui.theme.CardWhite
@@ -77,6 +83,8 @@ fun SettingsScreen(
     val bluetoothOn by vm.bluetoothOn.collectAsStateWithLifecycle()
     val bluetoothAvailable = vm.bluetoothAvailable
     val historyCount by vm.historyCount.collectAsStateWithLifecycle()
+    val updateState by vm.updateState.collectAsStateWithLifecycle()
+    val downloadingVersion by vm.downloadingVersion.collectAsStateWithLifecycle()
 
     val missing = vm.missingPermissions(context)
 
@@ -182,6 +190,37 @@ fun SettingsScreen(
                     checked = soundEnabled,
                     onCheckedChange = { vm.setSoundEnabled(it) }
                 )
+                SettingsDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { vm.showOnboardingAgain() }
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsIconBubble(Icons.Outlined.PlayCircle)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_show_welcome),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_show_welcome_sub),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Outlined.ChevronRight,
+                        contentDescription = null,
+                        tint = TextTertiary
+                    )
+                }
             }
         }
 
@@ -221,31 +260,101 @@ fun SettingsScreen(
         // ------------------------------------------------------- about
         SectionLabel("About")
         SectionCard {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                SettingsIconBubble(Icons.Outlined.Info)
-                Column(
+            Column {
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 12.dp)
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Text(
-                        text = "FindTrack v${BuildConfig.VERSION_NAME}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = TextPrimary
+                    SettingsIconBubble(Icons.Outlined.Info)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            text = "FindTrack v${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Find your devices. Stay connected.\n\n" +
+                                "• Everything is stored on this phone — no accounts, no cloud.\n" +
+                                "• Distance is estimated from Bluetooth signal strength (RSSI).\n" +
+                                "• Map positions are distance-accurate; bearings are illustrative.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                }
+
+                SettingsDivider()
+
+                val available = (updateState as? UpdateState.Available)?.info
+                val downloading = downloadingVersion
+                val checking = updateState is UpdateState.Checking
+                val subtitle = when {
+                    downloading != null ->
+                        stringResource(R.string.settings_update_downloading, downloading)
+                    available != null ->
+                        stringResource(R.string.settings_update_available, available.version)
+                    checking -> stringResource(R.string.settings_update_checking)
+                    updateState is UpdateState.UpToDate ->
+                        stringResource(R.string.settings_update_latest, BuildConfig.VERSION_NAME)
+                    updateState is UpdateState.Failed ->
+                        stringResource(R.string.settings_update_failed)
+                    else -> stringResource(R.string.settings_update_idle)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !checking && downloading == null) {
+                            if (available != null) vm.downloadUpdate() else vm.checkForUpdates()
+                        }
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsIconBubble(
+                        icon = Icons.Outlined.Download,
+                        tint = if (available != null) GreenPrimary else TextTertiary
                     )
-                    Text(
-                        text = "Find your devices. Stay connected.\n\n" +
-                            "• Everything is stored on this phone — no accounts, no cloud.\n" +
-                            "• Distance is estimated from Bluetooth signal strength (RSSI).\n" +
-                            "• Map positions are distance-accurate; bearings are illustrative.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_check_updates),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                    if (available != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(GreenBadgeBg)
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.update_banner_download),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GreenTextAccent
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.ChevronRight,
+                            contentDescription = null,
+                            tint = TextTertiary
+                        )
+                    }
                 }
             }
         }

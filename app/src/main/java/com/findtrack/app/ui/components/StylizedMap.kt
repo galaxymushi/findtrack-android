@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,12 +48,15 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.findtrack.app.R
 import com.findtrack.app.ble.DeviceIconType
 import com.findtrack.app.ui.theme.CardWhite
 import com.findtrack.app.ui.theme.GreenPrimary
@@ -76,6 +81,8 @@ data class MapPin(
     val selected: Boolean,
     val calloutTitle: String? = null,
     val calloutSubtitle: String? = null,
+    /** Current RSSI, used to color the pin's anchor by signal quality. */
+    val rssi: Int? = null,
     /** Real GPS coordinates of the device when known (from History). */
     val lat: Double? = null,
     val lon: Double? = null
@@ -102,6 +109,7 @@ fun StylizedMap(
     modifier: Modifier = Modifier,
     zoom: Float = 1f,
     showControls: Boolean = true,
+    showLegend: Boolean = true,
     userLabel: String? = null,
     onZoomIn: (() -> Unit)? = null,
     onZoomOut: (() -> Unit)? = null,
@@ -247,6 +255,26 @@ fun StylizedMap(
                 )
             }
 
+            // "You" chip under the blue dot — the phone is always blue.
+            Text(
+                text = stringResource(R.string.map_you),
+                style = MaterialTheme.typography.labelSmall,
+                color = UserBlue,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (0.5f * wPx - 26.dp.toPx()).roundToInt(),
+                            (0.52f * hPx + 15.dp.toPx()).roundToInt()
+                        )
+                    }
+                    .width(52.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(alpha = 0.9f))
+                    .padding(vertical = 3.dp)
+                    .zIndex(3f)
+            )
+
             // ---------------------------------------------------- device pins
             pins.forEach { pin ->
                 val bearing = stableBearing(pin.address)
@@ -297,20 +325,32 @@ fun StylizedMap(
                             }
                         }
                     }
-                    Surface(
-                        shape = CircleShape,
-                        color = if (pin.selected) GreenPrimary else CardWhite,
-                        shadowElevation = 3.dp,
-                        modifier = Modifier.size(bubbleSize)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = deviceIcon(pin.iconType),
-                                contentDescription = pin.calloutTitle ?: "Device",
-                                tint = if (pin.selected) Color.White else GreenPrimary,
-                                modifier = Modifier.size(bubbleSize * 0.46f)
-                            )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (pin.selected) GreenPrimary else CardWhite,
+                            shadowElevation = 3.dp,
+                            modifier = Modifier.size(bubbleSize)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = deviceIcon(pin.iconType),
+                                    contentDescription = pin.calloutTitle ?: "Device",
+                                    tint = if (pin.selected) Color.White else signalColor(pin.rssi),
+                                    modifier = Modifier.size(bubbleSize * 0.46f)
+                                )
+                            }
                         }
+
+                        // Anchor dot: marks the exact spot and carries the live
+                        // signal color (green / amber / red).
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 3.dp)
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (pin.selected) GreenPrimary else signalColor(pin.rssi))
+                        )
                     }
 
                     // Callout card above the pin (Finder Map design element).
@@ -352,11 +392,20 @@ fun StylizedMap(
                     style = MaterialTheme.typography.labelSmall,
                     color = TextSecondary,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.TopStart)
                         .padding(12.dp)
                         .clip(RoundedCornerShape(50))
                         .background(Color.White.copy(alpha = 0.85f))
                         .padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+
+            // -------------------------------------------------------- legend
+            if (showLegend) {
+                MapLegend(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(12.dp)
                 )
             }
 
@@ -394,9 +443,45 @@ private fun MapControlButton(
     }
 }
 
+/**
+ * Compact map key: blue dot = this phone, green marker = a Bluetooth device.
+ * Shared by the stylized map and the Google Maps surface.
+ */
+@Composable
+fun MapLegend(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .shadow(3.dp, RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(CardWhite.copy(alpha = 0.95f))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        LegendRow(color = UserBlue, label = stringResource(R.string.map_legend_you))
+        LegendRow(color = GreenPrimary, label = stringResource(R.string.map_legend_device))
+    }
+}
+
+@Composable
+private fun LegendRow(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextPrimary,
+            modifier = Modifier.padding(start = 7.dp)
+        )
+    }
+}
+
 /** Stable illustrative bearing (0..360) derived from the device address. */
-fun stableBearing(address: String): Int {
-    var hash = 0
+fun stableBearing(address: String): Int {    var hash = 0
     for (c in address) hash = 31 * hash + c.code
     return (hash % 360 + 360) % 360
 }

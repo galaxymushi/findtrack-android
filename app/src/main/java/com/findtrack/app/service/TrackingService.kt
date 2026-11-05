@@ -58,8 +58,13 @@ class TrackingService : LifecycleService() {
 
         fun stop(context: Context) {
             val intent = Intent(context, TrackingService::class.java).setAction(ACTION_STOP)
-            // startService is safe here: the service is already running as foreground.
-            context.startService(intent)
+            // startService is safe while the service is already foreground; if it
+            // is not running (or the OS blocks the start), stop it outright.
+            try {
+                context.startService(intent)
+            } catch (_: IllegalStateException) {
+                context.stopService(Intent(context, TrackingService::class.java))
+            }
         }
     }
 
@@ -105,7 +110,7 @@ class TrackingService : LifecycleService() {
         val addr = intent?.getStringExtra(EXTRA_ADDRESS) ?: run {
             finishSession(); return START_NOT_STICKY
         }
-        val devName = intent.getStringExtra(EXTRA_NAME) ?: "device"
+        val devName = intent.getStringExtra(EXTRA_NAME) ?: getString(R.string.notif_device_generic)
 
         // Restart case: same device already tracked, keep session state.
         if (address != addr) {
@@ -117,10 +122,10 @@ class TrackingService : LifecycleService() {
         }
 
         scanner.acquire(this)
-        startForegroundCompat(buildNotification("Looking for $devName…"))
+        startForegroundCompat(buildNotification(getString(R.string.notif_searching, devName)))
         handler.removeCallbacks(tickRunnable)
         handler.post(tickRunnable)
-        return START_NOT_STICKY
+        return START_REDELIVER_INTENT
     }
 
     private fun startForegroundCompat(notification: Notification) {
@@ -194,11 +199,11 @@ class TrackingService : LifecycleService() {
     }
 
     private fun notificationText(state: TrackingState): String = when (state.status) {
-        TrackStatus.LOST -> "Signal lost — last location saved"
-        TrackStatus.SEARCHING -> "Looking for ${state.name}…"
+        TrackStatus.LOST -> getString(R.string.notif_lost)
+        TrackStatus.SEARCHING -> getString(R.string.notif_searching, state.name)
         else -> {
             val dist = state.distanceM?.let { DistanceEstimator.formatDistance(it) } ?: "…"
-            "${state.name} • $dist"
+            getString(R.string.notif_device_distance, state.name, dist)
         }
     }
 
@@ -257,12 +262,18 @@ class TrackingService : LifecycleService() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_bluetooth)
-            .setContentTitle("Tracking ${name ?: "device"}")
+            .setContentTitle(
+                getString(R.string.notif_tracking_title, name ?: getString(R.string.notif_device_generic))
+            )
             .setContentText(contentText)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(tapIntent)
-            .addAction(0, getString(R.string.app_name).let { "Stop" }, stopIntent)
+            .addAction(
+                R.drawable.ic_stat_stop,
+                getString(R.string.notif_stop_action),
+                stopIntent
+            )
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()

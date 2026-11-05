@@ -45,7 +45,10 @@ import com.findtrack.app.ui.components.DeviceMapView
 import com.findtrack.app.ui.components.MapPin
 import com.findtrack.app.ui.components.NearbyBadge
 import com.findtrack.app.ui.components.SectionCard
+import com.findtrack.app.ui.components.SignalBars
+import com.findtrack.app.ui.components.SignalSparkline
 import com.findtrack.app.ui.components.StylizedMap
+import com.findtrack.app.ui.components.signalColor
 import com.findtrack.app.ui.theme.CardWhite
 import com.findtrack.app.ui.theme.GreenPrimary
 import com.findtrack.app.ui.theme.GreenSoftBg
@@ -74,6 +77,8 @@ fun DeviceDetailScreen(
     val isTracking = trackingAddress == address
     val userLatLng by vm.userLatLng.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
+    val signalHistory by vm.signalHistory.collectAsStateWithLifecycle()
+    val points = signalHistory[address].orEmpty()
 
     var zoom by remember { mutableFloatStateOf(1f) }
 
@@ -146,6 +151,7 @@ fun DeviceDetailScreen(
                             iconType = device.iconType,
                             distanceM = device.distanceM ?: 10.0,
                             selected = true,
+                            rssi = device.rssi,
                             lat = deviceFix?.lat,
                             lon = deviceFix?.lon
                         )
@@ -153,6 +159,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.fillMaxSize(),
                     zoom = 16f,
                     showControls = true,
+                    showLegend = false,
                     userLocation = userLatLng,
                     onPinTap = { }
                 )
@@ -243,6 +250,61 @@ fun DeviceDetailScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
+            }
+        }
+
+        // ---------------------------------------------- signal chart
+        if (device != null && device.lastSeen != null) {
+            SectionCard(modifier = Modifier.padding(top = 12.dp)) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Signal strength",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = if (points.size < 2) {
+                                    "Collecting readings…"
+                                } else {
+                                    "${points.size} readings this session"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary
+                            )
+                        }
+                        SignalBars(level = device.rssi?.let { DistanceEstimator.signalLevel(it) })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = device.rssi?.let { "$it dBm" } ?: "—",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = signalColor(device.rssi)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    if (points.size >= 2) {
+                        SignalSparkline(
+                            points = points,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Move around to see how the signal changes",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextTertiary
+                            )
+                        }
+                    }
+                }
             }
         }
 

@@ -8,4 +8,55 @@
     <string name="nav_devices">Devices</string>
     <string name="nav_map">Map</string>
     <string name="nav_history">History</string>
+
+    <string name="notif_tracking_title">Tracking %1$s</string>
+    <string name="notif_searching">Looking for %1$s…</string>
+    <string name="notif_lost">Signal lost — last location saved</string>
+    <string name="notif_device_distance">%1$s • %2$s</string>
+    <string name="notif_stop_action">Stop</string>
+    <string name="notif_device_generic">device</string>
+
+    <!-- Welcome screen -->
+    <string name="welcome_skip">Skip</string>
+    <string name="welcome_next">Continue</string>
+    <string name="welcome_start">Get started</string>
+    <string name="welcome_title_1">Find what matters, fast</string>
+    <string name="welcome_body_1">FindTrack listens for nearby Bluetooth devices and shows how close they are — no internet needed.</string>
+    <string name="welcome_title_2">Your phone and devices, clearly apart</string>
+    <string name="welcome_body_2">The blue dot is you. Green pins are your Bluetooth devices. Tap a pin to see its details.</string>
+    <string name="welcome_title_3">Private and offline</string>
+    <string name="welcome_body_3">Everything stays on this phone. No account, no cloud, no tracking — the app even works in airplane mode.</string>
+
+    <!-- Map legend -->
+    <string name="map_you">You</string>
+    <string name="map_legend_you">You (this phone)</string>
+    <string name="map_legend_device">Bluetooth device</string>
+
+    <!-- Settings -->
+    <string name="settings_show_welcome">Show welcome screen again</string>
+    <string name="settings_show_welcome_sub">Replay the introduction and quick tips</string>
+
+    <!-- App updates -->
+    <string name="update_channel_name">App updates</string>
+    <string name="update_channel_desc">Notifies you when a new version of FindTrack is available.</string>
+    <string name="update_notif_title">FindTrack %1$s is available</string>
+    <string name="update_notif_text">A new version is ready — download it from the app.</string>
+    <string name="update_download">Download</string>
+    <string name="update_download_title">FindTrack %1$s update</string>
+    <string name="update_download_desc">Downloading the new version…</string>
+    <string name="update_install_title">FindTrack %1$s downloaded</string>
+    <string name="update_install_text">Tap to install the new version.</string>
+    <string name="update_banner_title">Update available</string>
+    <string name="update_banner_version">Version %1$s</string>
+    <string name="update_banner_body">A newer version of FindTrack is ready. Download it now to get the latest fixes and features.</string>
+    <string name="update_banner_downloading">Downloading…</string>
+    <string name="update_banner_download">Download</string>
+    <string name="update_banner_dismiss">Dismiss</string>
+    <string name="settings_check_updates">Check for updates</string>
+    <string name="settings_update_idle">Tap to check GitHub for a new version</string>
+    <string name="settings_update_checking">Checking for updates…</string>
+    <string name="settings_update_available">Version %1$s is available — tap to download</string>
+    <string name="settings_update_downloading">Downloading version %1$s — check your notifications</string>
+    <string name="settings_update_latest">You\'re on the latest version (v%1$s)</string>
+    <string name="settings_update_failed">Couldn\'t check for updates — tap to retry</string>
 </resources>

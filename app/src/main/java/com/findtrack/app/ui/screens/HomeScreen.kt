@@ -20,11 +20,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
+import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SignalCellularAlt
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,18 +42,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.findtrack.app.R
+import com.findtrack.app.ble.DistanceEstimator
 import com.findtrack.app.ui.DeviceListEntry
 import com.findtrack.app.ui.FindTrackViewModel
+import com.findtrack.app.ui.UpdateState
 import com.findtrack.app.ui.components.DeviceIconBubble
 import com.findtrack.app.ui.components.DeviceMapView
 import com.findtrack.app.ui.components.MapPin
 import com.findtrack.app.ui.components.NearbyBadge
 import com.findtrack.app.ui.components.SectionCard
+import com.findtrack.app.ui.components.SignalBars
 import com.findtrack.app.ui.components.StylizedMap
+import com.findtrack.app.ui.theme.CardWhite
 import com.findtrack.app.ui.theme.GreenBadgeBg
 import com.findtrack.app.ui.theme.GreenPrimary
 import com.findtrack.app.ui.theme.GreenSoftBg
@@ -81,6 +94,9 @@ fun HomeScreen(
     val selectedDevice by vm.selectedDevice.collectAsStateWithLifecycle()
     val selectedAddress by vm.selectedAddress.collectAsStateWithLifecycle()
     val demoMode by vm.demoMode.collectAsStateWithLifecycle()
+    val savedCount by vm.savedCount.collectAsStateWithLifecycle()
+    val updateState by vm.updateState.collectAsStateWithLifecycle()
+    val downloadingVersion by vm.downloadingVersion.collectAsStateWithLifecycle()
     val missingPermissions = vm.missingPermissions(context)
 
     var zoom by remember { mutableFloatStateOf(1f) }
@@ -104,6 +120,7 @@ fun HomeScreen(
                     iconType = entry.iconType,
                     distanceM = entry.distanceM ?: 10.0,
                     selected = entry.address == selectedAddress || (selectedAddress == null && featured?.address == entry.address),
+                    rssi = entry.rssi,
                     lat = fix?.lat ?: 0.0,
                     lon = fix?.lon ?: 0.0,
                     calloutTitle = entry.name,
@@ -242,6 +259,17 @@ fun HomeScreen(
             }
         }
 
+        // ------------------------------------------------ update banner
+        val availableUpdate = (updateState as? UpdateState.Available)?.info
+        if (availableUpdate != null) {
+            UpdateBanner(
+                version = availableUpdate.version,
+                downloading = downloadingVersion == availableUpdate.version,
+                onDownload = { vm.downloadUpdate() },
+                onDismiss = { vm.dismissUpdate() }
+            )
+        }
+
         // ------------------------------------------------ scanning card
         // (Shown only after access is granted — the banner above owns the CTA,
         // so the two never duplicate "Access needed".)
@@ -320,6 +348,37 @@ fun HomeScreen(
                     tint = TextTertiary
                 )
             }
+            }
+        }
+
+        // ------------------------------------------------ quick stats
+        if (missingPermissions.isEmpty()) {
+            val found = devices.count { it.lastSeen != null }
+            val near = devices.count { it.isNearby && it.lastSeen != null }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatPill(
+                    icon = Icons.Outlined.Bluetooth,
+                    value = "$near",
+                    label = "Nearby",
+                    modifier = Modifier.weight(1f)
+                )
+                StatPill(
+                    icon = Icons.Outlined.SignalCellularAlt,
+                    value = "$found",
+                    label = "Found",
+                    modifier = Modifier.weight(1f)
+                )
+                StatPill(
+                    icon = Icons.Outlined.Bookmark,
+                    value = "$savedCount",
+                    label = "Saved",
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
 
@@ -411,11 +470,17 @@ fun HomeScreen(
                             if (rssi != null) add("RSSI: $rssi dBm")
                             if (seen != null) add(TimeFormat.relative(seen))
                         }.joinToString("  •  ")
-                        Text(
-                            text = detail,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SignalBars(
+                                level = rssi?.let { DistanceEstimator.signalLevel(it) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = detail,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary
+                            )
+                        }
                     }
                     Icon(
                         imageVector = Icons.Outlined.ChevronRight,
@@ -427,5 +492,139 @@ fun HomeScreen(
         } else {
             Spacer(modifier = Modifier.height(56.dp))
         }
+    }
+}
+
+/** Green promo card announcing a newer release, with a one-tap download. */
+@Composable
+private fun UpdateBanner(
+    version: String,
+    downloading: Boolean,
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF0F4D2E), Color(0xFF1E7A46))
+                )
+            )
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Download,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.update_banner_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White
+                )
+                Text(
+                    text = stringResource(R.string.update_banner_version, version),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.78f)
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(R.string.update_banner_dismiss),
+                    tint = Color.White.copy(alpha = 0.8f)
+                )
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.update_banner_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.88f),
+            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+        )
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White)
+                    .clickable(enabled = !downloading) { onDownload() }
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (downloading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = GreenPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(
+                    text = stringResource(
+                        if (downloading) R.string.update_banner_downloading
+                        else R.string.update_banner_download
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = GreenPrimary
+                )
+            }
+        }
+    }
+}
+
+/** Small white stat tile used by the home summary row. */
+@Composable
+private fun StatPill(
+    icon: ImageVector,
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardWhite)
+            .padding(vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = GreenPrimary,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary
+        )
     }
 }

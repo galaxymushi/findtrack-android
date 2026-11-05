@@ -2,6 +2,8 @@ package com.findtrack.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -34,6 +37,8 @@ import com.findtrack.app.ui.screens.HistoryScreen
 import com.findtrack.app.ui.screens.HomeScreen
 import com.findtrack.app.ui.screens.SettingsScreen
 import com.findtrack.app.ui.screens.TrackingScreen
+import com.findtrack.app.ui.screens.WelcomeScreen
+import com.findtrack.app.ui.theme.PageBg
 
 /**
  * App navigation: the design's four tabs plus pushed screens (device detail,
@@ -45,6 +50,22 @@ fun AppNav() {
     val vm: FindTrackViewModel = viewModel()
     val navController = rememberNavController()
     val context = LocalContext.current
+
+    // First launch: show the welcome flow before the main scaffold.
+    // A null value means DataStore is still loading — render a plain backdrop
+    // so the welcome screen never flashes for returning users.
+    val onboardingDone by vm.onboardingDone.collectAsStateWithLifecycle()
+    when (onboardingDone) {
+        null -> {
+            Box(modifier = Modifier.fillMaxSize().background(PageBg))
+            return
+        }
+        false -> {
+            WelcomeScreen(onFinish = { vm.completeOnboarding() })
+            return
+        }
+        true -> Unit
+    }
 
     // Bumped whenever permissions may have changed (resume from settings,
     // after a launcher result) so screens refresh their permission state.

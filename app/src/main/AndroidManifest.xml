@@ -26,11 +26,18 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Google Maps tiles are loaded over the network when an API key is
+         configured. Everything else (scanning, history, GPS) stays offline. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Foreground tracking service + its persistent notification -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Lets the downloaded update APK open the system installer -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- BLE hardware is optional so the app installs everywhere (demo mode works without it) -->
     <uses-feature
@@ -39,7 +46,7 @@
 
     <application
         android:name=".FindTrackApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -63,6 +70,16 @@
             android:name=".service.TrackingService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Starts APK downloads from the update notification and posts the
+             "tap to install" notification when DownloadManager finishes. -->
+        <receiver
+            android:name=".update.UpdateNotificationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
 
         <!-- Google Maps SDK key: injected at build time from local.properties
              (maps.api.key). The app works without it using the offline map. -->
