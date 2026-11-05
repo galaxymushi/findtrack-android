@@ -152,7 +152,7 @@ announced at most once.
 | Build | Gradle 8.14.3, AGP 8.7.3, JDK 17 target |
 
 **Compatibility:** minSdk 26 (Android 8.0) → targetSdk/compileSdk 35 (Android 15).
-Version 1.3.0. Phone, foldable and tablet layouts are responsive; the light design identity is kept in both system themes.
+Version 1.3.1. Phone, foldable and tablet layouts are responsive; the light design identity is kept in both system themes.
 
 ### Google Maps setup (2 minutes, optional but recommended)
 The app ships map-ready: with an API key it shows **real Google Maps with your true
