@@ -2,6 +2,7 @@ package com.findtrack.app.ui
 
 import android.Manifest
 import android.app.Application
+import android.app.DownloadManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -26,6 +27,7 @@ import com.findtrack.app.update.UpdateInfo
 import com.findtrack.app.update.UpdateInstaller
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -86,6 +88,21 @@ sealed interface UpdateState {
     data object UpToDate : UpdateState
     data class Failed(val message: String) : UpdateState
 }
+
+enum class DownloadStatus { RUNNING, SUCCESS, FAILED }
+
+/** Live DownloadManager progress for the update APK. */
+data class DownloadProgress(
+    val bytes: Long,
+    val total: Long,
+    val status: DownloadStatus
+) {
+    /** 0..1, or null while the server hasn't reported a size yet. */
+    val fraction: Float?
+        get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else null
+}
+
+private data class DownloadSnapshot(val status: Int, val bytes: Long, val total: Long)
 
 /**
  * Single shared ViewModel for all screens: owns merged device state, saved
@@ -173,7 +190,12 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
     private val _downloadingVersion = MutableStateFlow<String?>(null)
     val downloadingVersion: StateFlow<String?> = _downloadingVersion.asStateFlow()
 
+    /** DownloadManager progress, kept fresh by a 1 s poll while downloading. */
+    private val _downloadProgress = MutableStateFlow<DownloadProgress?>(null)
+    val downloadProgress: StateFlow<DownloadProgress?> = _downloadProgress.asStateFlow()
+
     private var updateCheckJob: Job? = null
+    private var downloadWatchJob: Job? = null
 
     /** User's live position for the real Google Map (null until fixed). */
     val userLatLng: StateFlow<com.google.android.gms.maps.model.LatLng?> =
@@ -358,11 +380,102 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
             UpdateInstaller.openReleasePage(app, info.releaseUrl)
             return
         }
+        _downloadProgress.value = null
         if (UpdateInstaller.download(app, apkUrl, info.version)) {
             _downloadingVersion.value = info.version
+            _downloadProgress.value = DownloadProgress(0L, -1L, DownloadStatus.RUNNING)
+            watchDownload()
         } else {
-            _updateState.value = UpdateState.Failed("Could not start the download")
+            _downloadProgress.value = DownloadProgress(0L, -1L, DownloadStatus.FAILED)
         }
+    }
+
+    /** Polls DownloadManager so the UI shows real progress and failures. */
+    private fun watchDownload() {
+        downloadWatchJob?.cancel()
+        downloadWatchJob = viewModelScope.launch {
+            val app = getApplication<Application>()
+            val manager = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val id = UpdateInstaller.downloadId(app)
+            if (id == null) {
+                _downloadProgress.value = DownloadProgress(0L, -1L, DownloadStatus.FAILED)
+                _downloadingVersion.value = null
+                return@launch
+            }
+            var stalledSeconds = 0
+            while (isActive) {
+                delay(1_000)
+                val snapshot = queryDownload(manager, id) ?: continue
+                when (snapshot.status) {
+                    DownloadManager.STATUS_SUCCESSFUL -> {
+                        _downloadProgress.value =
+                            DownloadProgress(snapshot.bytes, snapshot.total, DownloadStatus.SUCCESS)
+                        _downloadingVersion.value = null
+                        return@launch
+                    }
+
+                    DownloadManager.STATUS_FAILED -> {
+                        _downloadProgress.value =
+                            DownloadProgress(snapshot.bytes, snapshot.total, DownloadStatus.FAILED)
+                        _downloadingVersion.value = null
+                        return@launch
+                    }
+
+                    else -> {
+                        // No bytes for 45 s means the system downloader is stuck
+                        // (common on flaky mobile networks); offer retry/browser
+                        // instead of showing "Downloading…" forever.
+                        stalledSeconds = if (snapshot.bytes > 0) 0 else stalledSeconds + 1
+                        if (stalledSeconds >= 45) {
+                            _downloadProgress.value =
+                                DownloadProgress(snapshot.bytes, snapshot.total, DownloadStatus.FAILED)
+                            _downloadingVersion.value = null
+                            return@launch
+                        }
+                        _downloadProgress.value =
+                            DownloadProgress(snapshot.bytes, snapshot.total, DownloadStatus.RUNNING)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun queryDownload(manager: DownloadManager, id: Long): DownloadSnapshot? {
+        val cursor = manager.query(DownloadManager.Query().setFilterById(id)) ?: return null
+        return cursor.use {
+            if (!it.moveToFirst()) return null
+            DownloadSnapshot(
+                status = it.getInt(
+                    it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
+                ),
+                bytes = it.getLong(
+                    it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                ),
+                total = it.getLong(
+                    it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                )
+            )
+        }
+    }
+
+    /** Opens the system installer for the finished APK. */
+    fun installDownloadedUpdate() {
+        val app = getApplication<Application>()
+        val uri = UpdateInstaller.downloadedUri(app)
+        if (uri == null) {
+            _downloadProgress.value = DownloadProgress(0L, -1L, DownloadStatus.FAILED)
+            return
+        }
+        UpdateInstaller.openInstaller(app, uri)
+    }
+
+    /** Escape hatch when the system downloader is stuck on this network. */
+    fun openDownloadInBrowser() {
+        val info = (_updateState.value as? UpdateState.Available)?.info ?: return
+        UpdateInstaller.openReleasePage(
+            getApplication(),
+            info.apkUrl ?: info.releaseUrl
+        )
     }
 
     fun dismissUpdate() {

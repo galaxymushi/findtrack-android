@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SignalCellularAlt
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -53,6 +52,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.findtrack.app.R
 import com.findtrack.app.ble.DistanceEstimator
 import com.findtrack.app.ui.DeviceListEntry
+import com.findtrack.app.ui.DownloadProgress
+import com.findtrack.app.ui.DownloadStatus
 import com.findtrack.app.ui.FindTrackViewModel
 import com.findtrack.app.ui.UpdateState
 import com.findtrack.app.ui.components.DeviceIconBubble
@@ -72,6 +73,7 @@ import com.findtrack.app.ui.theme.TextPrimary
 import com.findtrack.app.ui.theme.TextSecondary
 import com.findtrack.app.ui.theme.TextTertiary
 import com.findtrack.app.util.TimeFormat
+import kotlin.math.roundToInt
 
 /**
  * Home — the design's landing screen: brand header, live scanning card,
@@ -97,6 +99,7 @@ fun HomeScreen(
     val savedCount by vm.savedCount.collectAsStateWithLifecycle()
     val updateState by vm.updateState.collectAsStateWithLifecycle()
     val downloadingVersion by vm.downloadingVersion.collectAsStateWithLifecycle()
+    val downloadProgress by vm.downloadProgress.collectAsStateWithLifecycle()
     val missingPermissions = vm.missingPermissions(context)
 
     var zoom by remember { mutableFloatStateOf(1f) }
@@ -265,7 +268,10 @@ fun HomeScreen(
             UpdateBanner(
                 version = availableUpdate.version,
                 downloading = downloadingVersion == availableUpdate.version,
+                progress = downloadProgress,
                 onDownload = { vm.downloadUpdate() },
+                onInstall = { vm.installDownloadedUpdate() },
+                onBrowser = { vm.openDownloadInBrowser() },
                 onDismiss = { vm.dismissUpdate() }
             )
         }
@@ -495,14 +501,20 @@ fun HomeScreen(
     }
 }
 
-/** Green promo card announcing a newer release, with a one-tap download. */
+/** Green promo card announcing a newer release, with live download progress. */
 @Composable
 private fun UpdateBanner(
     version: String,
     downloading: Boolean,
+    progress: DownloadProgress?,
     onDownload: () -> Unit,
+    onInstall: () -> Unit,
+    onBrowser: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val status = progress?.status
+    val failed = status == DownloadStatus.FAILED
+    val finished = status == DownloadStatus.SUCCESS
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -555,40 +567,147 @@ private fun UpdateBanner(
             }
         }
 
-        Text(
-            text = stringResource(R.string.update_banner_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.88f),
-            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
-        )
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White)
-                    .clickable(enabled = !downloading) { onDownload() }
-                    .padding(horizontal = 18.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (downloading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = GreenPrimary
+        when {
+            downloading -> {
+                val current = progress
+                val fraction = current?.fraction
+                if (current != null && fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .clip(RoundedCornerShape(50))
+                            .height(6.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.25f)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.update_download_progress,
+                            (fraction * 100).roundToInt(),
+                            formatSize(current.bytes),
+                            formatSize(current.total)
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.88f),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .clip(RoundedCornerShape(50))
+                            .height(6.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                    Text(
+                        text = stringResource(R.string.update_download_starting),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.88f),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
                 Text(
-                    text = stringResource(
-                        if (downloading) R.string.update_banner_downloading
-                        else R.string.update_banner_download
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = GreenPrimary
+                    text = stringResource(R.string.update_banner_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 6.dp)
                 )
             }
+
+            finished -> Text(
+                text = stringResource(R.string.update_banner_downloaded),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+            )
+
+            failed -> Text(
+                text = stringResource(R.string.update_banner_failed),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+            )
+
+            else -> Text(
+                text = stringResource(R.string.update_banner_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.88f),
+                modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+            )
         }
+
+        if (!downloading) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = if (failed) 6.dp else 0.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                when {
+                    finished -> BannerAction(
+                        text = stringResource(R.string.update_banner_install),
+                        filled = true,
+                        onClick = onInstall
+                    )
+
+                    failed -> {
+                        BannerAction(
+                            text = stringResource(R.string.update_banner_browser),
+                            filled = false,
+                            onClick = onBrowser
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        BannerAction(
+                            text = stringResource(R.string.update_banner_retry),
+                            filled = true,
+                            onClick = onDownload
+                        )
+                    }
+
+                    else -> BannerAction(
+                        text = stringResource(R.string.update_banner_download),
+                        filled = true,
+                        onClick = onDownload
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BannerAction(text: String, filled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (filled) Color.White else Color.White.copy(alpha = 0.16f))
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 9.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (filled) GreenPrimary else Color.White
+        )
+    }
+}
+
+private fun formatSize(bytes: Long): String {
+    if (bytes <= 0) return "0 KB"
+    val mb = bytes / 1_048_576.0
+    return if (mb >= 1.0) {
+        String.format(java.util.Locale.getDefault(), "%.1f MB", mb)
+    } else {
+        String.format(
+            java.util.Locale.getDefault(),
+            "%d KB",
+            (bytes / 1024).coerceAtLeast(1)
+        )
     }
 }
 

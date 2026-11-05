@@ -62,9 +62,11 @@ After onboarding, FindTrack quietly checks the public GitHub Releases page
 (`galaxymushi/findtrack-android`) on launch. When a newer version exists it posts
 one notification and shows a green **Update available** card on Home. Tapping
 **Download** (in the app or in the notification) downloads the APK through
-Android's DownloadManager; when it finishes, a **tap to install** notification
-opens the system installer. The same check is available any time from
-**Settings → Check for updates**. It is best-effort: offline or blocked
+Android's DownloadManager with **live progress** in the card; when it finishes,
+an **Install** button (and a **tap to install** notification) opens the system
+installer. If the system downloader stalls or fails, the card offers **Retry**
+and **Open in browser** instead of hanging. The same check is available any time
+from **Settings → Check for updates**. It is best-effort: offline or blocked
 notifications never affect scanning, tracking or history, and each version is
 announced at most once.
 
@@ -152,7 +154,7 @@ announced at most once.
 | Build | Gradle 8.14.3, AGP 8.7.3, JDK 17 target |
 
 **Compatibility:** minSdk 26 (Android 8.0) → targetSdk/compileSdk 35 (Android 15).
-Version 1.3.1. Phone, foldable and tablet layouts are responsive; the light design identity is kept in both system themes.
+Version 1.3.2. Phone, foldable and tablet layouts are responsive; the light design identity is kept in both system themes.
 
 ### Google Maps setup (2 minutes, optional but recommended)
 The app ships map-ready: with an API key it shows **real Google Maps with your true

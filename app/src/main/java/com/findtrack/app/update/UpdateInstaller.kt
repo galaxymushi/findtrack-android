@@ -135,7 +135,7 @@ object UpdateInstaller {
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
             .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(false)
+            .setAllowedOverRoaming(true)
 
         return try {
             val manager =
@@ -182,6 +182,31 @@ object UpdateInstaller {
             NotificationManagerCompat.from(context).notify(INSTALL_NOTIFICATION_ID, notification)
         } catch (error: SecurityException) {
             // Notifications are blocked; the DownloadManager entry still exists.
+        }
+    }
+
+    /** Id of the last enqueued update download, or null if none. */
+    fun downloadId(context: Context): Long? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(KEY_DOWNLOAD_ID, -1L)
+            .takeIf { it != -1L }
+
+    /** Content URI of the finished APK, or null if it is missing/failed. */
+    fun downloadedUri(context: Context): Uri? {
+        val id = downloadId(context) ?: return null
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        return manager.getUriForDownloadedFile(id)
+    }
+
+    fun openInstaller(context: Context, uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, APK_MIME)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (error: Exception) {
+            // No installer available; the download notification remains.
         }
     }
 

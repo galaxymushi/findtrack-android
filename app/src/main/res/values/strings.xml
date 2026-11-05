@@ -59,4 +59,14 @@
     <string name="settings_update_downloading">Downloading version %1$s — check your notifications</string>
     <string name="settings_update_latest">You\'re on the latest version (v%1$s)</string>
     <string name="settings_update_failed">Couldn\'t check for updates — tap to retry</string>
+    <string name="update_banner_install">Install</string>
+    <string name="update_banner_retry">Retry</string>
+    <string name="update_banner_browser">Open in browser</string>
+    <string name="update_banner_downloaded">Downloaded. Tap Install to finish.</string>
+    <string name="update_banner_failed">The download didn\'t finish. Check your connection and try again, or open it in your browser.</string>
+    <string name="update_download_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="update_download_starting">Starting download…</string>
+    <string name="settings_update_downloaded">Downloaded — tap to install</string>
+    <string name="settings_update_progress">Downloading… %1$d%%</string>
+    <string name="settings_update_download_failed">Download failed — tap to try again</string>
 </resources>

@@ -59,4 +59,14 @@
     <string name="settings_update_downloading">Inapakua toleo %1$s — angalia arifa zako</string>
     <string name="settings_update_latest">Uko kwenye toleo la mwisho (v%1$s)</string>
     <string name="settings_update_failed">Imeshindikana kuangalia masasisho — gusa kujaribu tena</string>
+    <string name="update_banner_install">Sakinisha</string>
+    <string name="update_banner_retry">Jaribu tena</string>
+    <string name="update_banner_browser">Fungua kwenye browser</string>
+    <string name="update_banner_downloaded">Imepakuliwa. Gusa Sakinisha kukamilisha.</string>
+    <string name="update_banner_failed">Upakuaji haukukamilika. Angalia mtandao kisha ujaribu tena, au fungua kwenye browser.</string>
+    <string name="update_download_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="update_download_starting">Inaanza kupakua…</string>
+    <string name="settings_update_downloaded">Imepakuliwa — gusa kusakinisha</string>
+    <string name="settings_update_progress">Inapakua… %1$d%%</string>
+    <string name="settings_update_download_failed">Upakuaji umeshindikana — gusa kujaribu tena</string>
 </resources>

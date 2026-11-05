@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.findtrack.app.BuildConfig
 import com.findtrack.app.R
+import com.findtrack.app.ui.DownloadStatus
 import com.findtrack.app.ui.FindTrackViewModel
 import com.findtrack.app.ui.UpdateState
 import com.findtrack.app.ui.components.BackTopBar
@@ -85,6 +86,7 @@ fun SettingsScreen(
     val historyCount by vm.historyCount.collectAsStateWithLifecycle()
     val updateState by vm.updateState.collectAsStateWithLifecycle()
     val downloadingVersion by vm.downloadingVersion.collectAsStateWithLifecycle()
+    val downloadProgress by vm.downloadProgress.collectAsStateWithLifecycle()
 
     val missing = vm.missingPermissions(context)
 
@@ -294,9 +296,23 @@ fun SettingsScreen(
                 val available = (updateState as? UpdateState.Available)?.info
                 val downloading = downloadingVersion
                 val checking = updateState is UpdateState.Checking
+                val downloadDone = downloadProgress?.status == DownloadStatus.SUCCESS
+                val downloadFailed = downloadProgress?.status == DownloadStatus.FAILED
+                val busy = downloading != null && downloadProgress?.status == DownloadStatus.RUNNING
                 val subtitle = when {
-                    downloading != null ->
-                        stringResource(R.string.settings_update_downloading, downloading)
+                    downloadDone -> stringResource(R.string.settings_update_downloaded)
+                    downloadFailed -> stringResource(R.string.settings_update_download_failed)
+                    downloading != null -> {
+                        val fraction = downloadProgress?.fraction
+                        if (fraction != null) {
+                            stringResource(
+                                R.string.settings_update_progress,
+                                (fraction * 100).toInt()
+                            )
+                        } else {
+                            stringResource(R.string.update_download_starting)
+                        }
+                    }
                     available != null ->
                         stringResource(R.string.settings_update_available, available.version)
                     checking -> stringResource(R.string.settings_update_checking)
@@ -309,8 +325,12 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = !checking && downloading == null) {
-                            if (available != null) vm.downloadUpdate() else vm.checkForUpdates()
+                        .clickable(enabled = !checking && !busy) {
+                            when {
+                                downloadDone -> vm.installDownloadedUpdate()
+                                available != null -> vm.downloadUpdate()
+                                else -> vm.checkForUpdates()
+                            }
                         }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -343,7 +363,10 @@ fun SettingsScreen(
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = stringResource(R.string.update_banner_download),
+                                text = stringResource(
+                                    if (downloadDone) R.string.update_banner_install
+                                    else R.string.update_banner_download
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = GreenTextAccent
                             )
