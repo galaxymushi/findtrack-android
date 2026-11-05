@@ -15,6 +15,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.findtrack.app.BuildConfig
 import com.findtrack.app.FindTrackApp
 import com.findtrack.app.ble.DeviceIconType
+import com.findtrack.app.ble.ScanProfile
 import com.findtrack.app.ble.TrackedDevice
 import com.findtrack.app.ble.TrackingController
 import com.findtrack.app.ble.TrackingState
@@ -25,9 +26,13 @@ import com.findtrack.app.service.TrackingService
 import com.findtrack.app.update.UpdateChecker
 import com.findtrack.app.update.UpdateInfo
 import com.findtrack.app.update.UpdateInstaller
+import com.findtrack.app.util.HistoryCsv
+import com.findtrack.app.util.HistoryExport
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,31 +56,35 @@ data class DeviceListEntry(
     val isDemo: Boolean,
     val iconType: DeviceIconType,
     val distanceM: Double?,
-    val isNearby: Boolean
+    val isNearby: Boolean,
+    /** User alias, when one has been set for a saved device. */
+    val customName: String? = null
 ) {
     companion object {
-        fun from(device: TrackedDevice, saved: Boolean) = DeviceListEntry(
+        fun from(device: TrackedDevice, saved: SavedDeviceEntity?) = DeviceListEntry(
             address = device.address,
-            name = device.name,
+            name = saved?.customName ?: device.name,
             rssi = device.rssi,
             lastSeen = device.lastSeen,
-            isSaved = saved,
+            isSaved = saved != null,
             isDemo = device.isDemo,
             iconType = device.iconType,
             distanceM = device.distanceM,
-            isNearby = device.isNearby
+            isNearby = device.isNearby,
+            customName = saved?.customName
         )
 
         fun fromSaved(entity: SavedDeviceEntity) = DeviceListEntry(
             address = entity.address,
-            name = entity.name,
+            name = entity.customName ?: entity.name,
             rssi = null,
             lastSeen = null,
             isSaved = true,
             isDemo = entity.address.startsWith("demo:"),
             iconType = com.findtrack.app.ble.classifyDevice(entity.name),
             distanceM = null,
-            isNearby = false
+            isNearby = false,
+            customName = entity.customName
         )
     }
 }
@@ -129,7 +138,7 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
     val devices: StateFlow<List<DeviceListEntry>> =
         combine(scanner.devices, deviceDao.observeSaved()) { live, saved ->
             val savedMap = saved.associateBy { it.address }
-            live.map { DeviceListEntry.from(it, savedMap.containsKey(it.address)) } +
+            live.map { DeviceListEntry.from(it, savedMap[it.address]) } +
                 saved.filter { s -> live.none { it.address == s.address } }
                     .map { DeviceListEntry.fromSaved(it) }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -172,6 +181,11 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val soundEnabled: StateFlow<Boolean> = prefs.soundEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** How aggressively Bluetooth is scanned (battery vs. freshness). */
+    val scanProfile: StateFlow<ScanProfile> = prefs.scanProfile
+        .map { ScanProfile.fromKey(it) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ScanProfile.BALANCED)
 
     /** Null until DataStore has loaded, so the welcome screen never flashes. */
     val onboardingDone: StateFlow<Boolean?> = prefs.onboardingDone
@@ -256,11 +270,14 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
         // is applied inside LocationRepository.recordSighting).
         viewModelScope.launch {
             combine(scanner.devices, deviceDao.observeSaved()) { live, saved ->
-                val savedAddresses = saved.map { it.address }.toSet()
-                live.filter { it.address in savedAddresses }
+                val savedMap = saved.associateBy { it.address }
+                live.filter { it.address in savedMap }
+                    .map { it to (savedMap[it.address]?.customName ?: it.name) }
             }.distinctUntilChanged().debounce(5_000).collect { list ->
                 if (hasLocationPermission()) {
-                    list.forEach { location.recordSighting(historyDao, it) }
+                    list.forEach { (device, name) ->
+                        location.recordSighting(historyDao, device, displayName = name)
+                    }
                 }
             }
         }
@@ -300,8 +317,14 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startTracking(context: Context, entry: DeviceListEntry) {
         viewModelScope.launch {
+            val existing = deviceDao.find(entry.address)
             deviceDao.upsert(
-                SavedDeviceEntity(entry.address, entry.name, System.currentTimeMillis())
+                SavedDeviceEntity(
+                    address = entry.address,
+                    name = existing?.name ?: entry.name,
+                    addedAt = existing?.addedAt ?: System.currentTimeMillis(),
+                    customName = existing?.customName
+                )
             )
         }
         select(entry.address)
@@ -321,6 +344,15 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Sets or clears a saved device's custom name (blank restores the advertised name). */
+    fun renameDevice(address: String, newName: String) {
+        viewModelScope.launch {
+            val existing = deviceDao.find(address) ?: return@launch
+            val alias = newName.trim().takeIf { it.isNotEmpty() && it != existing.name }
+            deviceDao.updateCustomName(address, alias)
+        }
+    }
+
     fun clearHistory() {
         viewModelScope.launch { historyDao.clear() }
     }
@@ -331,6 +363,30 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSoundEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setSoundEnabled(enabled) }
+    }
+
+    fun setScanProfile(profile: ScanProfile) {
+        viewModelScope.launch { prefs.setScanProfile(profile.name) }
+    }
+
+    /** Writes all history to a CSV in the cache and opens the share sheet. */
+    fun exportHistory(context: Context, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val entries = historyDao.all()
+            val uri = if (entries.isEmpty()) {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    HistoryExport.write(context, HistoryCsv.build(entries))
+                }
+            }
+            if (uri == null) {
+                onResult(false)
+            } else {
+                HistoryExport.share(context, uri)
+                onResult(true)
+            }
+        }
     }
 
     fun completeOnboarding() {

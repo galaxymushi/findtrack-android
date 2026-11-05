@@ -69,4 +69,29 @@
     <string name="settings_update_downloaded">Imepakuliwa — gusa kusakinisha</string>
     <string name="settings_update_progress">Inapakua… %1$d%%</string>
     <string name="settings_update_download_failed">Upakuaji umeshindikana — gusa kujaribu tena</string>
+
+    <!-- Device detail -->
+    <string name="device_rename">Badilisha jina la kifaa</string>
+    <string name="device_rename_title">Lipe jina kifaa hiki</string>
+    <string name="device_rename_label">Jina</string>
+    <string name="device_rename_hint">Acha wazi kutumia jina ambalo kifaa kinajitangaza.</string>
+    <string name="device_rename_save">Hifadhi</string>
+    <string name="device_rename_cancel">Ghairi</string>
+    <string name="device_directions">Maelekezo</string>
+
+    <!-- Scan speed -->
+    <string name="settings_scan_speed">Kasi ya utafutaji</string>
+    <string name="settings_scan_speed_sub">Mara ngapi FindTrack inatafuta vifaa</string>
+    <string name="settings_scan_fast">Haraka</string>
+    <string name="settings_scan_fast_sub">Masasisho mengi zaidi — hutumia betri zaidi</string>
+    <string name="settings_scan_balanced">Wastani</string>
+    <string name="settings_scan_balanced_sub">Masasisho mazuri na matumizi ya kawaida ya betri</string>
+    <string name="settings_scan_saver">Kuokoa betri</string>
+    <string name="settings_scan_saver_sub">Masasisho ya polepole — hudumu muda mrefu zaidi</string>
+
+    <!-- History export -->
+    <string name="settings_export_history">Hamisha historia (CSV)</string>
+    <string name="settings_export_history_sub">Shiriki maeneo yaliyohifadhiwa kama faili la spreadsheet</string>
+    <string name="settings_export_empty">Hakuna historia ya kuhamisha bado</string>
+    <string name="settings_export_failed">Imeshindikana kuunda faili la kuhamisha</string>
 </resources>

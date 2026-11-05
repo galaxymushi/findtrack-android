@@ -211,6 +211,7 @@ class LocationRepository(private val context: Context) {
     fun recordSighting(
         dao: HistoryDao,
         device: TrackedDevice,
+        displayName: String = device.name,
         minIntervalMs: Long = 10 * 60 * 1000L
     ) {
         scope.launch {
@@ -221,7 +222,7 @@ class LocationRepository(private val context: Context) {
                 dao.insert(
                     HistoryEntity(
                         address = device.address,
-                        name = device.name,
+                        name = displayName,
                         rssi = device.rssi,
                         lat = fix?.lat,
                         lon = fix?.lon,

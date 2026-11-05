@@ -97,14 +97,17 @@ announced at most once.
   device summary card and "Last seen location" from History.
 - **History** — chronological device sightings with place, time and RSSI pill,
   tap → device detail, clear-history with confirmation, info card.
-- **Settings** — permission status + fix buttons, Bluetooth state, **Demo mode**
-  switch, proximity sound switch, replay welcome, **check for updates**, clear
-  history, about.
+- **Settings** — permission status + fix buttons, Bluetooth state, **scan speed**
+  (Fast / Balanced / Battery saver), **Demo mode** switch, proximity sound switch,
+  replay welcome, **check for updates**, **export history (CSV)**, clear history,
+  about.
 
 ### Real functionality (not placeholders)
 - **BLE scanning** — reference-counted scan loop shared by UI and service;
-  5 s on / 2 s off duty cycling for battery; periodic restart for flaky stacks;
-  exponentially smoothed RSSI; Bluetooth on/off hot-plug via broadcast receiver.
+  configurable duty cycle (**Fast** 6 s/1 s, **Balanced** 5 s/2 s, **Battery
+  saver** 3 s/6 s) with matching `ScanSettings` mode; periodic restart for flaky
+  stacks; exponentially smoothed RSSI; Bluetooth on/off hot-plug via broadcast
+  receiver.
 - **Distance estimation** — log-distance path-loss model (TxPower −59 dBm @ 1 m,
   exponent 2.2), clamped 0.3–99 m; drives Nearby/Far classification (≤ 30 m).
 - **Live tracking service** — foreground service (`connectedDevice` type) keeps
@@ -123,6 +126,13 @@ announced at most once.
   notification. Falls back to the release page if a release has no APK asset.
 - **Real GPS capture** — FusedLocationProvider with framework `LocationManager`
   fallback, offline reverse-geocoding against a bundled Tanzania gazetteer.
+- **Custom names** — saved devices can be renamed (Room `saved_devices.customName`,
+  schema v2 with a non-destructive `1→2` migration); the alias is used in lists,
+  the detail screen, history sighting names and tracking notifications.
+- **Directions** — the device detail map opens turn-by-turn navigation in any
+  installed maps app (`geo:` intent) or Google Maps in a browser.
+- **CSV export** — History can be shared as an RFC-4180 CSV via FileProvider
+  (cache-only, read permission granted to the chosen app).
 - **Demo mode** — a clearly-labeled simulator emitting the design's five sample
   devices (drifting RSSI) so every screen can be reviewed on any hardware,
   including the emulator. Off by default; labeled on Home whenever active.
@@ -154,7 +164,7 @@ announced at most once.
 | Build | Gradle 8.14.3, AGP 8.7.3, JDK 17 target |
 
 **Compatibility:** minSdk 26 (Android 8.0) → targetSdk/compileSdk 35 (Android 15).
-Version 1.3.2. Phone, foldable and tablet layouts are responsive; the light design identity is kept in both system themes.
+Version 1.4.0. Phone, foldable and tablet layouts are responsive; the light design identity is kept in both system themes.
 
 ### Google Maps setup (2 minutes, optional but recommended)
 The app ships map-ready: with an API key it shows **real Google Maps with your true
@@ -225,7 +235,8 @@ channel.
 ## 8. Testing performed
 
 - Unit tests: distance model, signal levels, device classification, time/place
-  formatting, bearing stability, version comparison — `gradlew testDebugUnitTest`.
+  formatting, bearing stability, version comparison, CSV escaping/naming —
+  `gradlew testDebugUnitTest` (28 tests).
 - Build verification: `assembleDebug` / `assembleRelease` compile clean.
 - On-device verification: installed and exercised on a running Android 34
   emulator (Pixel 6), including permission flow, all seven screens, demo mode,

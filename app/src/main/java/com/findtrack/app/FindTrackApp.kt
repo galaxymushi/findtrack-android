@@ -6,9 +6,14 @@ import android.app.NotificationManager
 import android.content.Context
 import androidx.room.Room
 import com.findtrack.app.ble.BleScanner
+import com.findtrack.app.ble.ScanProfile
 import com.findtrack.app.data.AppDatabase
 import com.findtrack.app.data.PrefsRepository
 import com.findtrack.app.location.LocationRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Tiny hand-rolled dependency graph. The app has a deliberately small number
@@ -22,8 +27,19 @@ class AppGraph(context: Context) {
     val location: LocationRepository = LocationRepository(appContext)
     val database: AppDatabase by lazy {
         Room.databaseBuilder(appContext, AppDatabase::class.java, AppDatabase.NAME)
+            .addMigrations(AppDatabase.MIGRATION_1_2)
             .fallbackToDestructiveMigration()
             .build()
+    }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        // Apply the saved scan cadence even when the process starts from the
+        // tracking service (no ViewModel yet).
+        appScope.launch {
+            prefs.scanProfile.collect { scanner.setProfile(ScanProfile.fromKey(it)) }
+        }
     }
 }
 

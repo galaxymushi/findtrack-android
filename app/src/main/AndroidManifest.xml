@@ -81,6 +81,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Shares CSV history exports from the app cache. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Google Maps SDK key: injected at build time from local.properties
              (maps.api.key). The app works without it using the offline map. -->
         <meta-data

@@ -18,17 +18,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Directions
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Navigation
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,8 +42,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.findtrack.app.R
 import com.findtrack.app.ble.DistanceEstimator
 import com.findtrack.app.ui.FindTrackViewModel
 import com.findtrack.app.ui.components.BackTopBar
@@ -57,6 +66,7 @@ import com.findtrack.app.ui.theme.PageBg
 import com.findtrack.app.ui.theme.TextPrimary
 import com.findtrack.app.ui.theme.TextSecondary
 import com.findtrack.app.ui.theme.TextTertiary
+import com.findtrack.app.util.Directions
 import com.findtrack.app.util.TimeFormat
 
 /**
@@ -79,8 +89,17 @@ fun DeviceDetailScreen(
     val history by vm.history.collectAsStateWithLifecycle()
     val signalHistory by vm.signalHistory.collectAsStateWithLifecycle()
     val points = signalHistory[address].orEmpty()
+    val context = LocalContext.current
+
+    val lastFix = remember(history, address) {
+        history.firstOrNull {
+            it.address == address && it.lat != null && it.lon != null
+        }
+    }
 
     var zoom by remember { mutableFloatStateOf(1f) }
+    var renameOpen by remember { mutableStateOf(false) }
+    var renameValue by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -93,6 +112,18 @@ fun DeviceDetailScreen(
             title = device?.name ?: "Device",
             onBack = onBack,
             actions = {
+                if (device != null && device.isSaved) {
+                    IconButton(onClick = {
+                        renameValue = device.customName ?: device.name
+                        renameOpen = true
+                    }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = stringResource(R.string.device_rename),
+                            tint = TextSecondary
+                        )
+                    }
+                }
                 if (device != null) {
                     IconButton(onClick = { vm.toggleSaved(device) }) {
                         Icon(
@@ -139,11 +170,6 @@ fun DeviceDetailScreen(
                 .fillMaxWidth()
         ) {
             if (device != null && device.lastSeen != null) {
-                val deviceFix = remember(history, device.address) {
-                    history.firstOrNull {
-                        it.address == device.address && it.lat != null && it.lon != null
-                    }
-                }
                 DeviceMapView(
                     pins = listOf(
                         MapPin(
@@ -152,8 +178,8 @@ fun DeviceDetailScreen(
                             distanceM = device.distanceM ?: 10.0,
                             selected = true,
                             rssi = device.rssi,
-                            lat = deviceFix?.lat,
-                            lon = deviceFix?.lon
+                            lat = lastFix?.lat,
+                            lon = lastFix?.lon
                         )
                     ),
                     modifier = Modifier.fillMaxSize(),
@@ -190,6 +216,34 @@ fun DeviceDetailScreen(
                             text = TimeFormat.relative(device.lastSeen),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
+                        )
+                    }
+                }
+
+                if (lastFix != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(12.dp)
+                            .size(48.dp)
+                            .shadowCard()
+                            .clip(CircleShape)
+                            .background(CardWhite)
+                            .clickable {
+                                Directions.open(
+                                    context,
+                                    lastFix.lat!!,
+                                    lastFix.lon!!,
+                                    device.name
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Directions,
+                            contentDescription = stringResource(R.string.device_directions),
+                            tint = GreenPrimary,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -328,6 +382,35 @@ fun DeviceDetailScreen(
             Text(
                 text = if (isTracking) "Tracking active" else "Start Tracking",
                 style = MaterialTheme.typography.labelLarge
+            )
+        }
+
+        if (renameOpen && device != null) {
+            AlertDialog(
+                onDismissRequest = { renameOpen = false },
+                title = { Text(stringResource(R.string.device_rename_title)) },
+                text = {
+                    OutlinedTextField(
+                        value = renameValue,
+                        onValueChange = { renameValue = it.take(60) },
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.device_rename_label)) },
+                        supportingText = { Text(stringResource(R.string.device_rename_hint)) }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vm.renameDevice(device.address, renameValue)
+                        renameOpen = false
+                    }) {
+                        Text(stringResource(R.string.device_rename_save))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renameOpen = false }) {
+                        Text(stringResource(R.string.device_rename_cancel))
+                    }
+                }
             )
         }
     }

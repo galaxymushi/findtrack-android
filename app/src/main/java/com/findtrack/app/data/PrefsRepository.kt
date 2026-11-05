@@ -21,6 +21,7 @@ class PrefsRepository(private val context: Context) {
         val SOUND_ENABLED = booleanPreferencesKey("sound_enabled")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val LAST_NOTIFIED_VERSION = stringPreferencesKey("last_notified_version")
+        val SCAN_PROFILE = stringPreferencesKey("scan_profile")
     }
 
     /** Simulated devices for reviewing the UI without BLE hardware. */
@@ -34,6 +35,11 @@ class PrefsRepository(private val context: Context) {
 
     /** Version we last raised an "update available" notification for. */
     val lastNotifiedVersion: Flow<String?> = context.settingsStore.data.map { it[Keys.LAST_NOTIFIED_VERSION] }
+
+    /** Scan duty cycle: FAST, BALANCED or SAVER (see ScanProfile). */
+    val scanProfile: Flow<String> = context.settingsStore.data.map {
+        it[Keys.SCAN_PROFILE] ?: "BALANCED"
+    }
 
     suspend fun setDemoMode(enabled: Boolean) {
         context.settingsStore.edit { it[Keys.DEMO_MODE] = enabled }
@@ -49,5 +55,9 @@ class PrefsRepository(private val context: Context) {
 
     suspend fun setLastNotifiedVersion(version: String) {
         context.settingsStore.edit { it[Keys.LAST_NOTIFIED_VERSION] = version }
+    }
+
+    suspend fun setScanProfile(profile: String) {
+        context.settingsStore.edit { it[Keys.SCAN_PROFILE] = profile }
     }
 }

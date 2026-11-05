@@ -9,6 +9,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.RoomDatabase
 import androidx.room.Query
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 /** A device the user explicitly saved (or auto-saved by starting a tracking session). */
@@ -16,7 +18,9 @@ import kotlinx.coroutines.flow.Flow
 data class SavedDeviceEntity(
     @PrimaryKey val address: String,
     val name: String,
-    val addedAt: Long
+    val addedAt: Long,
+    /** User-chosen alias; shown instead of the advertised name when present. */
+    val customName: String? = null
 )
 
 /** One recorded "last seen" sighting of a device with the phone's GPS fix. */
@@ -44,8 +48,14 @@ interface DeviceDao {
     @Query("SELECT address FROM saved_devices")
     suspend fun savedAddresses(): List<String>
 
+    @Query("SELECT * FROM saved_devices WHERE address = :address")
+    suspend fun find(address: String): SavedDeviceEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(device: SavedDeviceEntity)
+
+    @Query("UPDATE saved_devices SET customName = :customName WHERE address = :address")
+    suspend fun updateCustomName(address: String, customName: String?)
 
     @Query("DELETE FROM saved_devices WHERE address = :address")
     suspend fun delete(address: String)
@@ -58,6 +68,9 @@ interface DeviceDao {
 interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY timestamp DESC LIMIT :limit")
     fun observeRecent(limit: Int = 200): Flow<List<HistoryEntity>>
+
+    @Query("SELECT * FROM history ORDER BY timestamp DESC")
+    suspend fun all(): List<HistoryEntity>
 
     @Query("SELECT COUNT(*) FROM history")
     fun observeCount(): Flow<Int>
@@ -80,7 +93,7 @@ interface HistoryDao {
 
 @Database(
     entities = [SavedDeviceEntity::class, HistoryEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -89,5 +102,12 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "findtrack.db"
+
+        /** Adds the optional custom-name column without dropping saved devices. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE saved_devices ADD COLUMN customName TEXT")
+            }
+        }
     }
 }

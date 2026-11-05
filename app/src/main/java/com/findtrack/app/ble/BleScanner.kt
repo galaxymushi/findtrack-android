@@ -43,8 +43,6 @@ import kotlin.math.roundToInt
 class BleScanner private constructor(context: Context) {
 
     companion object {
-        private const val SCAN_ACTIVE_MS = 5_000L
-        private const val SCAN_IDLE_MS = 2_000L
         private const val STALE_TIMEOUT_MS = 60_000L
         private const val MAX_DEVICES = 30
         private const val DEMO_PREFIX = "demo:"
@@ -92,6 +90,24 @@ class BleScanner private constructor(context: Context) {
     private val holders = mutableSetOf<Any>()
     private var scanJob: Job? = null
     private var demoJob: Job? = null
+
+    /** Discovery/battery trade-off; change via [setProfile]. */
+    @Volatile
+    var profile: ScanProfile = ScanProfile.BALANCED
+        private set
+
+    /** Applies a new scan profile and restarts the loop if it is running. */
+    fun setProfile(newProfile: ScanProfile) {
+        if (profile == newProfile) return
+        profile = newProfile
+        synchronized(lock) {
+            if (holders.isNotEmpty()) {
+                scanJob?.cancel()
+                stopLeScan()
+                startScanLoop()
+            }
+        }
+    }
 
     private val btReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -171,7 +187,7 @@ class BleScanner private constructor(context: Context) {
             while (isActive) {
                 pruneStaleDevices()
                 runOneScan()
-                delay(SCAN_IDLE_MS)
+                delay(profile.idleMs)
             }
         }
     }
@@ -229,7 +245,7 @@ class BleScanner private constructor(context: Context) {
         } ?: return
 
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(profile.mode)
             .build()
 
         _scanning.value = true
@@ -249,7 +265,7 @@ class BleScanner private constructor(context: Context) {
             return
         }
 
-        delay(SCAN_ACTIVE_MS)
+        delay(profile.activeMs)
         stopLeScan()
         _scanning.value = false
     }

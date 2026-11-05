@@ -69,4 +69,29 @@
     <string name="settings_update_downloaded">Downloaded — tap to install</string>
     <string name="settings_update_progress">Downloading… %1$d%%</string>
     <string name="settings_update_download_failed">Download failed — tap to try again</string>
+
+    <!-- Device detail -->
+    <string name="device_rename">Rename device</string>
+    <string name="device_rename_title">Name this device</string>
+    <string name="device_rename_label">Name</string>
+    <string name="device_rename_hint">Leave blank to use the name the device advertises.</string>
+    <string name="device_rename_save">Save</string>
+    <string name="device_rename_cancel">Cancel</string>
+    <string name="device_directions">Directions</string>
+
+    <!-- Scan speed -->
+    <string name="settings_scan_speed">Scan speed</string>
+    <string name="settings_scan_speed_sub">How often FindTrack looks for devices</string>
+    <string name="settings_scan_fast">Fast</string>
+    <string name="settings_scan_fast_sub">Most frequent updates — uses the most battery</string>
+    <string name="settings_scan_balanced">Balanced</string>
+    <string name="settings_scan_balanced_sub">Good updates and everyday battery use</string>
+    <string name="settings_scan_saver">Battery saver</string>
+    <string name="settings_scan_saver_sub">Slower updates — lasts longest on a charge</string>
+
+    <!-- History export -->
+    <string name="settings_export_history">Export history (CSV)</string>
+    <string name="settings_export_history_sub">Share your saved locations as a spreadsheet file</string>
+    <string name="settings_export_empty">No history to export yet</string>
+    <string name="settings_export_failed">Couldn\'t create the export file</string>
 </resources>
