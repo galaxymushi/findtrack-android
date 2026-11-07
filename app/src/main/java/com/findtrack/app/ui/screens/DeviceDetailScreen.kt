@@ -68,6 +68,7 @@ import com.findtrack.app.ui.theme.TextSecondary
 import com.findtrack.app.ui.theme.TextTertiary
 import com.findtrack.app.util.Directions
 import com.findtrack.app.util.TimeFormat
+import com.google.android.gms.maps.model.LatLng
 
 /**
  * Device detail — map-centric screen for one device with its last known
@@ -86,16 +87,18 @@ fun DeviceDetailScreen(
     val trackingAddress by vm.trackingAddress.collectAsStateWithLifecycle()
     val isTracking = trackingAddress == address
     val userLatLng by vm.userLatLng.collectAsStateWithLifecycle()
-    val history by vm.history.collectAsStateWithLifecycle()
+    val latestFixes by vm.latestFixes.collectAsStateWithLifecycle()
     val signalHistory by vm.signalHistory.collectAsStateWithLifecycle()
     val points = signalHistory[address].orEmpty()
     val context = LocalContext.current
 
-    val lastFix = remember(history, address) {
-        history.firstOrNull {
-            it.address == address && it.lat != null && it.lon != null
-        }
+    val lastFix = latestFixes[address]
+    val deviceLatLng = lastFix?.let { f ->
+        val lat = f.lat
+        val lon = f.lon
+        if (lat != null && lon != null) LatLng(lat, lon) else null
     }
+    val seenAt = device?.lastSeen ?: lastFix?.timestamp
 
     var zoom by remember { mutableFloatStateOf(1f) }
     var renameOpen by remember { mutableStateOf(false) }
@@ -143,13 +146,12 @@ fun DeviceDetailScreen(
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (device != null && device.lastSeen != null) {
+            if (device != null && seenAt != null) {
                 if (device.isNearby) NearbyBadge()
                 Spacer(modifier = Modifier.width(10.dp))
-                val lastSeen = device.lastSeen
                 val rssi = device.rssi
                 Text(
-                    text = "Last seen ${TimeFormat.relative(lastSeen)}" +
+                    text = "Last seen ${TimeFormat.relative(seenAt)}" +
                         (if (rssi != null) "  •  RSSI: $rssi dBm" else ""),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
@@ -169,7 +171,7 @@ fun DeviceDetailScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            if (device != null && device.lastSeen != null) {
+            if (device != null && seenAt != null) {
                 DeviceMapView(
                     pins = listOf(
                         MapPin(
@@ -186,6 +188,7 @@ fun DeviceDetailScreen(
                     zoom = 16f,
                     showControls = true,
                     showLegend = false,
+                    focus = deviceLatLng,
                     userLocation = userLatLng,
                     onPinTap = { }
                 )
@@ -213,10 +216,17 @@ fun DeviceDetailScreen(
                             color = TextPrimary
                         )
                         Text(
-                            text = TimeFormat.relative(device.lastSeen),
+                            text = lastFix?.place ?: "Waiting for a GPS fix",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
+                        if (lastFix != null) {
+                            Text(
+                                text = TimeFormat.relative(lastFix.timestamp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextTertiary
+                            )
+                        }
                     }
                 }
 

@@ -100,20 +100,24 @@ class LocationRepository(private val context: Context) {
             override fun onProviderDisabled(provider: String) = Unit
         }
         listener = l
-        try {
-            val provider = when {
-                m.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
-                m.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
-                else -> return
+        // GPS first (it is what "where was my device last seen" is based on),
+        // then the network provider so fixes keep coming indoors.
+        val providers = buildList {
+            if (m.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
+            if (m.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
+        }
+        if (providers.isEmpty()) return
+        providers.forEach { provider ->
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    m.requestLocationUpdates(provider, 5_000L, 1f, l, Looper.getMainLooper())
+                } else {
+                    @Suppress("DEPRECATION")
+                    m.requestLocationUpdates(provider, 5_000L, 1f, l)
+                }
+            } catch (_: SecurityException) {
+            } catch (_: Exception) {
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                m.requestLocationUpdates(provider, 5_000L, 1f, l, Looper.getMainLooper())
-            } else {
-                @Suppress("DEPRECATION")
-                m.requestLocationUpdates(provider, 5_000L, 1f, l)
-            }
-        } catch (_: SecurityException) {
-        } catch (_: Exception) {
         }
     }
 
@@ -135,9 +139,11 @@ class LocationRepository(private val context: Context) {
                     @Suppress("MissingPermission")
                     f.lastLocation
                         .addOnSuccessListener { loc ->
-                            if (loc != null && !cont.isCancelled) cont.resume(loc) else cont.resume(null)
+                            if (cont.isActive) cont.resume(loc)
                         }
-                        .addOnFailureListener { cont.resume(null) }
+                        .addOnFailureListener {
+                            if (cont.isActive) cont.resume(null)
+                        }
                     // lastLocation may never resolve on some devices; safety timeout below.
                     Handler(Looper.getMainLooper()).postDelayed({
                         if (cont.isActive) cont.resume(null)
@@ -206,7 +212,9 @@ class LocationRepository(private val context: Context) {
 
     /**
      * Persist a history entry for a device sighting, coalescing entries that
-     * happen within [minIntervalMs] of the previous one for the same device.
+     * happen within [minIntervalMs] of the previous one *with a fix* for the
+     * same device. A sighting captured without a fix does not block the next
+     * real one.
      */
     fun recordSighting(
         dao: HistoryDao,
@@ -216,7 +224,7 @@ class LocationRepository(private val context: Context) {
     ) {
         scope.launch {
             try {
-                val last = dao.lastTimestampFor(device.address)
+                val last = dao.lastFixTimestampFor(device.address)
                 if (last != null && System.currentTimeMillis() - last < minIntervalMs) return@launch
                 val fix = currentFix()
                 dao.insert(

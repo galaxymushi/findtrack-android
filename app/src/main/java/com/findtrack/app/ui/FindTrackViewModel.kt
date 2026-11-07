@@ -9,9 +9,6 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.compose.runtime.mutableStateOf
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
 import com.findtrack.app.BuildConfig
 import com.findtrack.app.FindTrackApp
 import com.findtrack.app.ble.DeviceIconType
@@ -159,6 +156,15 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
     val historyCount: StateFlow<Int> = historyDao.observeCount()
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
+    /**
+     * Latest real GPS fix per device address. Unlike [history] this is not
+     * limited to the most recent N rows, so pins stay put in long sessions.
+     */
+    val latestFixes: StateFlow<Map<String, HistoryEntity>> =
+        historyDao.observeLatestFixes()
+            .map { list -> list.associateBy { it.address } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
     // --------------------------------------------------------- selection
 
     private val _selectedAddress = MutableStateFlow<String?>(null)
@@ -217,31 +223,10 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
             .map { fix -> fix?.let { com.google.android.gms.maps.model.LatLng(it.lat, it.lon) } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Camera position for Google Map — survives tab switches because it lives in ViewModel. */
-    val cameraPosition = mutableStateOf(
-        com.google.android.gms.maps.model.CameraPosition.fromLatLngZoom(
-            com.google.android.gms.maps.model.LatLng(0.0, 0.0), 16f
-        )
-    )
-
-    /** Last known real coordinates per device address (from History). */
-    fun lastKnownCoordinates(address: String): Pair<Double, Double>? =
-        history.value.firstOrNull { it.address == address && it.lat != null && it.lon != null }
-            ?.let { it.lat!! to it.lon!! }
-
     init {
         // Keep scanning while any screen is open.
         scanner.acquire(this)
         if (location.hasPermission()) location.prime()
-
-        // Keep camera centered on live GPS fix.
-        viewModelScope.launch {
-            userLatLng.collect { loc ->
-                if (loc != null) {
-                    cameraPosition.value = com.google.android.gms.maps.model.CameraPosition.fromLatLngZoom(loc, 16f)
-                }
-            }
-        }
 
         viewModelScope.launch {
             devices.debounce(300).collect { list ->
@@ -266,17 +251,29 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // Record history for saved devices while the app is open (10 min cooldown
-        // is applied inside LocationRepository.recordSighting).
+        // Record history for saved devices and the device currently open on
+        // screen while the app is open (cooldown applied inside recordSighting;
+        // the focused device is refreshed more often so its pin stays current).
         viewModelScope.launch {
-            combine(scanner.devices, deviceDao.observeSaved()) { live, saved ->
+            combine(scanner.devices, deviceDao.observeSaved(), _selectedAddress) { live, saved, selected ->
                 val savedMap = saved.associateBy { it.address }
-                live.filter { it.address in savedMap }
-                    .map { it to (savedMap[it.address]?.customName ?: it.name) }
+                live.filter { it.address in savedMap || it.address == selected }
+                    .map { device ->
+                        Triple(
+                            device,
+                            savedMap[device.address]?.customName ?: device.name,
+                            device.address == selected
+                        )
+                    }
             }.distinctUntilChanged().debounce(5_000).collect { list ->
                 if (hasLocationPermission()) {
-                    list.forEach { (device, name) ->
-                        location.recordSighting(historyDao, device, displayName = name)
+                    list.forEach { (device, name, focused) ->
+                        location.recordSighting(
+                            historyDao,
+                            device,
+                            displayName = name,
+                            minIntervalMs = if (focused) 2 * 60 * 1000L else 10 * 60 * 1000L
+                        )
                     }
                 }
             }
@@ -313,6 +310,24 @@ class FindTrackViewModel(app: Application) : AndroidViewModel(app) {
 
     fun select(address: String) {
         _selectedAddress.value = address
+        captureSightingNow(address)
+    }
+
+    /**
+     * Captures where the phone is right now for a device the user just opened,
+     * so its map pin appears immediately instead of waiting for the periodic
+     * background sighting pass. Throttled to once a minute per device.
+     */
+    private fun captureSightingNow(address: String) {
+        if (!hasLocationPermission()) return
+        val live = scanner.device(address) ?: return
+        val name = _knownDevices.value[address]?.name ?: live.name
+        location.recordSighting(
+            historyDao,
+            live,
+            displayName = name,
+            minIntervalMs = 60_000L
+        )
     }
 
     fun startTracking(context: Context, entry: DeviceListEntry) {

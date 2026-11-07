@@ -35,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,61 +101,35 @@ fun HomeScreen(
     val downloadProgress by vm.downloadProgress.collectAsStateWithLifecycle()
     val missingPermissions = vm.missingPermissions(context)
 
-    var zoom by remember { mutableFloatStateOf(1f) }
     val userLatLng by vm.userLatLng.collectAsStateWithLifecycle()
-    val history by vm.history.collectAsStateWithLifecycle()
+    val latestFixes by vm.latestFixes.collectAsStateWithLifecycle()
 
     // The quick card shows the explicit selection or the strongest device.
     val featured: DeviceListEntry? = selectedDevice
         ?: devices.firstOrNull { it.lastSeen != null }
 
-    val pins = remember(devices, selectedAddress, history, userLatLng) {
-        // ----------------------------------- live devices (BLE scan)
-        val livePins = devices
-            .filter { !it.isDemo && it.lastSeen != null && it.distanceM != null }
-            .map { entry ->
-                val fix = history.firstOrNull {
-                    it.address == entry.address && it.lat != null && it.lon != null
-                }
+    // One pin per device that has a real recorded GPS fix. A BLE scan only
+    // gives distance (never direction), so devices without a fix are not drawn
+    // at an invented position.
+    val pins = remember(devices, selectedAddress, latestFixes) {
+        devices
+            .filter { !it.isDemo }
+            .mapNotNull { entry ->
+                val fix = latestFixes[entry.address] ?: return@mapNotNull null
+                val lat = fix.lat ?: return@mapNotNull null
+                val lon = fix.lon ?: return@mapNotNull null
                 MapPin(
                     address = entry.address,
                     iconType = entry.iconType,
                     distanceM = entry.distanceM ?: 10.0,
-                    selected = entry.address == selectedAddress || (selectedAddress == null && featured?.address == entry.address),
+                    selected = entry.address == selectedAddress,
                     rssi = entry.rssi,
-                    lat = fix?.lat ?: 0.0,
-                    lon = fix?.lon ?: 0.0,
+                    lat = lat,
+                    lon = lon,
                     calloutTitle = entry.name,
-                    calloutSubtitle = if (entry.lastSeen != null) "Last seen ${TimeFormat.relative(entry.lastSeen)}" else null
+                    calloutSubtitle = "Last seen ${TimeFormat.relative(fix.timestamp)}"
                 )
             }
-
-        // ----------------------------------- saved devices with real last-seen fix
-        val historyPins = devices
-            .filter { !it.isDemo && it.isSaved }
-            .flatMap { entry ->
-                history.firstOrNull {
-                    it.address == entry.address && it.lat != null && it.lon != null
-                }?.let { fix ->
-                    listOf(MapPin(
-                        address = entry.address,
-                        iconType = entry.iconType,
-                        distanceM = 0.0,
-                        selected = false,
-                        lat = fix.lat ?: 0.0,
-                        lon = fix.lon ?: 0.0,
-                        calloutTitle = entry.name,
-                        calloutSubtitle = if (entry.lastSeen != null) "Last seen ${TimeFormat.relative(entry.lastSeen)}" else "Saved device"
-                    ))
-                } ?: emptyList()
-            }
-
-        // Merge: live pins take precedence over history-only pins
-        (livePins + historyPins)
-            .groupBy { it.address }
-            .mapValues { it.value.first() }
-            .values
-            .toList()
     }
 
     Column(
@@ -439,6 +412,37 @@ fun HomeScreen(
                         text = "Keep your devices powered and nearby",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
+                    )
+                }
+            }
+            if (devices.isNotEmpty() && pins.isEmpty() && !demoMode) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f))
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Place,
+                        contentDescription = null,
+                        tint = TextTertiary
+                    )
+                    Text(
+                        text = "No saved locations yet",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = if (vm.hasLocationPermission()) {
+                            "Tap a device to save where it was last seen."
+                        } else {
+                            "Allow location access to pin devices here."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 8.dp)
                     )
                 }
             }

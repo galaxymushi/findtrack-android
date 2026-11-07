@@ -23,8 +23,8 @@ android {
         applicationId = "com.findtrack.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.4.0"
+        versionCode = 8
+        versionName = "1.4.1"
         vectorDrawables.useSupportLibrary = true
 
         // Injected into AndroidManifest as ${MAPS_API_KEY}. Empty is allowed —

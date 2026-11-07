@@ -66,6 +66,7 @@ import com.findtrack.app.ui.theme.MapPark
 import com.findtrack.app.ui.theme.MapRoad
 import com.findtrack.app.ui.theme.MapRoadCasing
 import com.findtrack.app.ui.theme.MapWater
+import com.findtrack.app.ui.theme.SignalMedium
 import com.findtrack.app.ui.theme.TextPrimary
 import com.findtrack.app.ui.theme.TextSecondary
 import com.findtrack.app.ui.theme.UserBlue
@@ -459,6 +460,7 @@ fun MapLegend(modifier: Modifier = Modifier) {
     ) {
         LegendRow(color = UserBlue, label = stringResource(R.string.map_legend_you))
         LegendRow(color = GreenPrimary, label = stringResource(R.string.map_legend_device))
+        LegendRow(color = SignalMedium, label = stringResource(R.string.map_legend_selected))
     }
 }
 

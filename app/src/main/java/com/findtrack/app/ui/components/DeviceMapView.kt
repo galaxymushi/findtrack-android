@@ -14,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.findtrack.app.BuildConfig
-import com.findtrack.app.ui.components.MapPin
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -25,8 +24,6 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
-import kotlin.math.cos
-import kotlin.math.sin
 
 /***
  * Unified map used by every map surface in the app.
@@ -38,9 +35,14 @@ import kotlin.math.sin
  *   2) Without a key, the offline stylized vector map is used so the app remains
  *      fully functional with zero configuration.
  *
- * The camera always follows the user's live GPS fix. No hardcoded fallback
- * city (Riverside Park) is ever shown — if there is no fix yet, the map
- * stays empty until one arrives.
+ * Only devices with a recorded GPS fix get a marker: a BLE scan yields a
+ * distance estimate, never a direction, so plotting a "device position" from
+ * signal strength alone would invent a location. Devices without a fix are
+ * explained by the surrounding UI instead.
+ *
+ * [focus] is what the screen is about — the device's last-known fix when one
+ * exists, otherwise the phone. The camera centers on it and then leaves the
+ * user's pan/zoom alone.
  */
 @Composable
 fun DeviceMapView(
@@ -51,6 +53,7 @@ fun DeviceMapView(
     showLegend: Boolean = true,
     userLocation: LatLng? = null,
     selectedAddress: String? = null,
+    focus: LatLng? = null,
     onPinTap: (String) -> Unit = {},
     onZoomIn: (() -> Unit)? = null,
     onZoomOut: (() -> Unit)? = null,
@@ -59,19 +62,29 @@ fun DeviceMapView(
     val useGoogleMaps = BuildConfig.MAPS_API_KEY.isNotBlank()
 
     if (useGoogleMaps) {
-        // Camera state remembers the user's GPS fix. When switching tabs and
-        // coming back, userLocation is the same LatLng value, so the same
-        // CameraPositionState is reused — map doesn't reset.
         val cameraPositionState = rememberCameraPositionState {
             position = CameraPosition.fromLatLngZoom(
-                userLocation ?: LatLng(0.0, 0.0), zoom
+                focus ?: userLocation ?: LatLng(0.0, 0.0), zoom
             )
         }
 
-        // Always fly to the user's live position whenever a new fix arrives.
+        // Center on the device whose fix the screen is showing. Keyed on the
+        // target itself: new GPS ticks and manual pan/zoom no longer yank the
+        // camera back.
+        LaunchedEffect(focus?.latitude, focus?.longitude) {
+            val target = focus ?: return@LaunchedEffect
+            cameraPositionState.animate(
+                CameraUpdateFactory.newLatLngZoom(target, zoom)
+            )
+        }
+
+        // The first fix can arrive after the map opened. Center on the phone
+        // once, then hand the camera back to the user.
+        var centeredOnUser by remember { mutableStateOf(false) }
         LaunchedEffect(userLocation) {
             val loc = userLocation
-            if (loc != null) {
+            if (loc != null && focus == null && !centeredOnUser) {
+                centeredOnUser = true
                 cameraPositionState.animate(
                     CameraUpdateFactory.newLatLngZoom(loc, zoom)
                 )
@@ -79,52 +92,37 @@ fun DeviceMapView(
         }
 
         Box(modifier = modifier) {
-            if (userLocation == null) {
-                // No GPS fix yet — show empty map, no fake city.
-                GoogleMap(
-                    modifier = Modifier.fillMaxSize(),
-                    properties = MapProperties(isMyLocationEnabled = false),
-                    uiSettings = MapUiSettings(
-                        zoomControlsEnabled = false,
-                        myLocationButtonEnabled = false,
-                        compassEnabled = false,
-                        mapToolbarEnabled = false
-                    ),
-                    cameraPositionState = cameraPositionState
-                )
-            } else {
-                GoogleMap(
-                    modifier = Modifier.fillMaxSize(),
-                    properties = MapProperties(isMyLocationEnabled = true),
-                    uiSettings = MapUiSettings(
-                        zoomControlsEnabled = false,
-                        myLocationButtonEnabled = false,
-                        compassEnabled = false,
-                        mapToolbarEnabled = false
-                    ),
-                    cameraPositionState = cameraPositionState
-                ) {
-                    pins.forEach { pin ->
-                        val coordinate = pin.realLatLng ?: estimateCoordinate(userLocation, pin)
-                        val markerState = remember(pin.address, coordinate.latitude, coordinate.longitude) {
-                            MarkerState(position = coordinate)
-                        }
-                        Marker(
-                            state = markerState,
-                            title = pin.calloutTitle ?: "Device",
-                            snippet = pin.calloutSubtitle,
-                            // Green = Bluetooth device (the phone is the native
-                            // blue dot); the selected device turns amber.
-                            icon = BitmapDescriptorFactory.defaultMarker(
-                                if (pin.selected) BitmapDescriptorFactory.HUE_ORANGE
-                                else BitmapDescriptorFactory.HUE_GREEN
-                            ),
-                            onClick = {
-                                onPinTap(pin.address)
-                                true
-                            }
-                        )
+            GoogleMap(
+                modifier = Modifier.fillMaxSize(),
+                properties = MapProperties(isMyLocationEnabled = userLocation != null),
+                uiSettings = MapUiSettings(
+                    zoomControlsEnabled = false,
+                    myLocationButtonEnabled = false,
+                    compassEnabled = false,
+                    mapToolbarEnabled = false
+                ),
+                cameraPositionState = cameraPositionState
+            ) {
+                pins.forEach { pin ->
+                    val coordinate = pin.realLatLng ?: return@forEach
+                    val markerState = remember(pin.address, coordinate.latitude, coordinate.longitude) {
+                        MarkerState(position = coordinate)
                     }
+                    Marker(
+                        state = markerState,
+                        title = pin.calloutTitle ?: "Device",
+                        snippet = pin.calloutSubtitle,
+                        // Green = Bluetooth device (the phone is the native
+                        // blue dot); the selected device turns amber.
+                        icon = BitmapDescriptorFactory.defaultMarker(
+                            if (pin.selected) BitmapDescriptorFactory.HUE_ORANGE
+                            else BitmapDescriptorFactory.HUE_GREEN
+                        ),
+                        onClick = {
+                            onPinTap(pin.address)
+                            true
+                        }
+                    )
                 }
             }
 
@@ -140,10 +138,13 @@ fun DeviceMapView(
                 MapOverlayControls(
                     showControls = true,
                     onRecenter = {
-                        val loc = userLocation
-                        if (loc != null) {
+                        val target = focus ?: userLocation
+                        if (target != null) {
                             cameraPositionState.move(
-                                CameraUpdateFactory.newLatLngZoom(loc, zoom)
+                                CameraUpdateFactory.newLatLngZoom(
+                                    target,
+                                    cameraPositionState.position.zoom
+                                )
                             )
                         }
                         onRecenter?.invoke()
@@ -193,29 +194,4 @@ fun DeviceMapView(
         },
         onPinTap = onPinTap
     )
-}
-
-private fun estimateCoordinate(origin: LatLng, pin: MapPin): LatLng {
-    val distance = pin.distanceM.coerceAtMost(500.0)
-    val bearingRad = Math.toRadians(deviceBearing(pin.address).toDouble())
-    val earthRadius = 6_371_000.0
-    val angular = distance / earthRadius
-    val lat1 = Math.toRadians(origin.latitude)
-    val lon1 = Math.toRadians(origin.longitude)
-    val lat2 = Math.asin(
-        sin(lat1) * cos(angular) + cos(lat1) * sin(angular) * cos(bearingRad)
-    )
-    val lon2 = lon1 + kotlin.math.atan2(
-        sin(bearingRad) * sin(angular) * cos(lat1),
-        cos(angular) - sin(lat1) * sin(lat2)
-    )
-    return LatLng(Math.toDegrees(lat2), Math.toDegrees(lon2))
-}
-
-private fun deviceBearing(address: String): Float {
-    var hash = 0
-    for (c in address.toCharArray()) {
-        hash = 31 * hash + c.code
-    }
-    return (hash % 360).toFloat()
 }

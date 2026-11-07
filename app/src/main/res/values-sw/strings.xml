@@ -31,6 +31,7 @@
     <string name="map_you">Wewe</string>
     <string name="map_legend_you">Wewe (simu hii)</string>
     <string name="map_legend_device">Kifaa cha Bluetooth</string>
+    <string name="map_legend_selected">Kifaa kilichochaguliwa</string>
 
     <!-- Settings -->
     <string name="settings_show_welcome">Onyesha utangulizi tena</string>

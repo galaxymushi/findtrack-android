@@ -69,14 +69,31 @@ interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY timestamp DESC LIMIT :limit")
     fun observeRecent(limit: Int = 200): Flow<List<HistoryEntity>>
 
+    /**
+     * Newest entry with a usable GPS fix for every device, independent of the
+     * recent-history window. Map screens read from this so a device's pin does
+     * not vanish once 200 newer sightings push it out of [observeRecent].
+     */
+    @Query(
+        """
+        SELECT * FROM history h
+        WHERE h.lat IS NOT NULL AND h.lon IS NOT NULL
+          AND h.timestamp = (
+            SELECT MAX(timestamp) FROM history
+            WHERE address = h.address AND lat IS NOT NULL AND lon IS NOT NULL
+          )
+        """
+    )
+    fun observeLatestFixes(): Flow<List<HistoryEntity>>
+
     @Query("SELECT * FROM history ORDER BY timestamp DESC")
     suspend fun all(): List<HistoryEntity>
 
     @Query("SELECT COUNT(*) FROM history")
     fun observeCount(): Flow<Int>
 
-    @Query("SELECT MAX(timestamp) FROM history WHERE address = :address")
-    suspend fun lastTimestampFor(address: String): Long?
+    @Query("SELECT MAX(timestamp) FROM history WHERE address = :address AND lat IS NOT NULL")
+    suspend fun lastFixTimestampFor(address: String): Long?
 
     @Insert
     suspend fun insert(entry: HistoryEntity): Long

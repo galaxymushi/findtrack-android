@@ -17,16 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.SensorsOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,15 +36,14 @@ import com.findtrack.app.ui.components.DeviceMapView
 import com.findtrack.app.ui.components.MapPin
 import com.findtrack.app.ui.components.NearbyBadge
 import com.findtrack.app.ui.components.SectionCard
-import com.findtrack.app.ui.components.StylizedMap
 import com.findtrack.app.ui.theme.DividerColor
 import com.findtrack.app.ui.theme.GreenPrimary
 import com.findtrack.app.ui.theme.GreenSoftBg
 import com.findtrack.app.ui.theme.PageBg
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.Color
+import com.google.android.gms.maps.model.LatLng
 import com.findtrack.app.ui.theme.TextPrimary
 import com.findtrack.app.ui.theme.TextSecondary
 import com.findtrack.app.ui.theme.TextTertiary
@@ -68,12 +63,15 @@ fun FinderMapScreen(
 ) {
     val selected by vm.selectedDevice.collectAsStateWithLifecycle()
     val devices by vm.devices.collectAsStateWithLifecycle()
+    val latestFixes by vm.latestFixes.collectAsStateWithLifecycle()
     val trackingAddress by vm.trackingAddress.collectAsStateWithLifecycle()
     val userLatLng by vm.userLatLng.collectAsStateWithLifecycle()
-    val history by vm.history.collectAsStateWithLifecycle()
-    var zoom by remember { mutableFloatStateOf(1f) }
 
-    val device = selected ?: devices.firstOrNull { it.lastSeen != null }
+    // Explicit selection first, then a live device, then any saved device so a
+    // saved device that is out of range can still show its last known place.
+    val device = selected
+        ?: devices.firstOrNull { it.lastSeen != null }
+        ?: devices.firstOrNull { it.isSaved }
 
     Column(
         modifier = Modifier
@@ -95,10 +93,18 @@ fun FinderMapScreen(
             }
         )
 
-        if (device == null || device.lastSeen == null) {
+        if (device == null) {
             EmptyMapState(onPickDevice)
             return@Column
         }
+
+        val fix = latestFixes[device.address]
+        val deviceLatLng = fix?.let { f ->
+            val lat = f.lat
+            val lon = f.lon
+            if (lat != null && lon != null) LatLng(lat, lon) else null
+        }
+        val seenAt = device.lastSeen ?: fix?.timestamp
 
         // ------------------------------------------------------ map
         Box(
@@ -106,11 +112,6 @@ fun FinderMapScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            val deviceFix = remember(history, device.address) {
-                history.firstOrNull {
-                    it.address == device.address && it.lat != null && it.lon != null
-                }
-            }
             DeviceMapView(
                 pins = listOf(
                     MapPin(
@@ -120,14 +121,18 @@ fun FinderMapScreen(
                         selected = true,
                         rssi = device.rssi,
                         calloutTitle = device.name,
-                        calloutSubtitle = "Last seen ${TimeFormat.relative(device.lastSeen)}",
-                        lat = deviceFix?.lat,
-                        lon = deviceFix?.lon
+                        calloutSubtitle = seenAt?.let { "Last seen ${TimeFormat.relative(it)}" }
+                            ?: "No GPS fix yet",
+                        lat = fix?.lat,
+                        lon = fix?.lon
                     )
                 ),
                 modifier = Modifier.fillMaxSize(),
                 zoom = 16f,
                 showControls = true,
+                // Center on the device's real last-seen position; fall back to
+                // the phone when no fix has been recorded yet.
+                focus = deviceLatLng,
                 userLocation = userLatLng,
                 onPinTap = { }
             )
@@ -161,8 +166,18 @@ fun FinderMapScreen(
                             }
                             val distance = device.distanceM
                             Text(
-                                text = (if (device.isNearby) "Nearby" else "Far") +
-                                    (if (distance != null) " • ${DistanceEstimator.formatDistance(distance)}" else ""),
+                                text = when {
+                                    distance != null && device.isNearby ->
+                                        "Nearby • ${DistanceEstimator.formatDistance(distance)}"
+
+                                    distance != null ->
+                                        "Far • ${DistanceEstimator.formatDistance(distance)}"
+
+                                    seenAt != null ->
+                                        "Not in range • seen ${TimeFormat.relative(seenAt)}"
+
+                                    else -> "Not seen recently"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextSecondary
                             )
@@ -208,28 +223,22 @@ fun FinderMapScreen(
                             color = TextPrimary
                         )
                         Text(
-                            text = nearestPlaceFor(vm, device.address),
+                            text = fix?.place ?: "Not recorded yet — keep scanning",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
-                        Text(
-                            text = TimeFormat.absolute(device.lastSeen),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextTertiary
-                        )
+                        if (fix != null) {
+                            Text(
+                                text = TimeFormat.absolute(fix.timestamp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextTertiary
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
-
-/** Latest known place for a device from History (offline gazetteer). */
-@Composable
-private fun nearestPlaceFor(vm: FindTrackViewModel, address: String): String {
-    val history by vm.history.collectAsStateWithLifecycle()
-    val entry = history.firstOrNull { it.address == address }
-    return entry?.place ?: "Waiting for a location fix…"
 }
 
 @Composable
